@@ -4,6 +4,7 @@ import {
   shareEndpoints,
   mapyRouteUrl,
   formatDistance,
+  trailColour,
 } from "./trip.ts";
 import type { Edge } from "../graph/graph.ts";
 
@@ -18,6 +19,8 @@ function edge(partial: Partial<Edge>): Edge {
       [19.01, 47.51],
     ],
     ways: [1],
+    colours: [],
+    markings: [],
     ...partial,
   };
 }
@@ -88,5 +91,21 @@ describe("formatDistance", () => {
     expect(formatDistance(999)).toBe("999 m");
     expect(formatDistance(1000)).toBe("1,0 km");
     expect(formatDistance(1234)).toBe("1,2 km");
+  });
+});
+
+describe("trailColour", () => {
+  it("maps a single waymark colour to its hex", () => {
+    expect(trailColour(["green"])).toBe("#2f9e44");
+  });
+
+  it("prefers the national blue on shared sections", () => {
+    expect(trailColour(["red", "blue"])).toBe("#1c66c9");
+    expect(trailColour(["yellow", "green"])).toBe("#2f9e44");
+  });
+
+  it("falls back for unknown or empty colours", () => {
+    expect(trailColour(["pink"])).toBe("#e8590c");
+    expect(trailColour([])).toBe("#e8590c");
   });
 });

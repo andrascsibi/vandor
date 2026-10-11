@@ -9,7 +9,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   BUDA_HILLS_BBOX,
-  buildTrailsQuery,
+  buildHikingRoutesQuery,
   osmToGeoJson,
   type OverpassResponse,
 } from "./overpass.ts";
@@ -51,8 +51,8 @@ async function queryOverpass(query: string): Promise<OverpassResponse> {
 }
 
 async function main(): Promise<void> {
-  const query = buildTrailsQuery(BUDA_HILLS_BBOX);
-  console.log("Querying Overpass for Buda-hills trail ways…");
+  const query = buildHikingRoutesQuery(BUDA_HILLS_BBOX);
+  console.log("Querying Overpass for Buda-hills official marked-trail ways…");
   console.log(query);
 
   const json = await queryOverpass(query);
@@ -61,7 +61,9 @@ async function main(): Promise<void> {
   await mkdir(dirname(OUT_PATH), { recursive: true });
   await writeFile(OUT_PATH, JSON.stringify(fc, null, 2) + "\n", "utf8");
 
-  console.log(`Wrote ${fc.features.length} trail ways → ${OUT_PATH}`);
+  const colours = new Set(fc.features.flatMap((f) => f.properties.colours));
+  console.log(`Wrote ${fc.features.length} marked-trail ways → ${OUT_PATH}`);
+  console.log(`  colours present: ${[...colours].sort().join(", ")}`);
 }
 
 main().catch((err) => {

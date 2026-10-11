@@ -1,24 +1,20 @@
 import { describe, it, expect } from "vitest";
 import {
   BUDA_HILLS_BBOX,
-  buildTrailsQuery,
+  buildHikingRoutesQuery,
   osmToGeoJson,
-  TRAIL_HIGHWAYS,
   type OverpassResponse,
 } from "./overpass.ts";
 
-describe("buildTrailsQuery", () => {
-  const query = buildTrailsQuery(BUDA_HILLS_BBOX);
+describe("buildHikingRoutesQuery", () => {
+  const query = buildHikingRoutesQuery(BUDA_HILLS_BBOX);
 
-  it("asks for JSON and uses out geom (coords + node ids)", () => {
+  it("selects hiking route relations and their member ways with geometry", () => {
     expect(query).toContain("[out:json]");
+    expect(query).toContain('rel["route"="hiking"]');
+    expect(query).toContain("way(r.r)");
     expect(query).toContain("out geom;");
-  });
-
-  it("filters on every trail highway tag", () => {
-    for (const hw of TRAIL_HIGHWAYS) {
-      expect(query).toContain(hw);
-    }
+    expect(query).toContain(".r out body;");
   });
 
   it("embeds the bbox in south,west,north,east order", () => {
@@ -30,6 +26,27 @@ describe("buildTrailsQuery", () => {
 describe("osmToGeoJson", () => {
   const sample: OverpassResponse = {
     elements: [
+      // Two hiking routes; way 1001 is on both (blue circle + red bar).
+      {
+        type: "relation",
+        id: 1,
+        tags: {
+          route: "hiking",
+          "osmc:symbol": "blue:white:blue_circle",
+          name: "K↺ (Normafa – Hármas-kút-tető)",
+        },
+        members: [
+          { type: "way", ref: 1001, role: "" },
+          { type: "node", ref: 42, role: "guidepost" }, // ignored
+        ],
+      },
+      {
+        type: "relation",
+        id: 2,
+        tags: { route: "hiking", "osmc:symbol": "red:white:red_bar", ref: "P" },
+        members: [{ type: "way", ref: 1001, role: "" }],
+      },
+      // Member way of both routes.
       {
         type: "way",
         id: 1001,
@@ -41,29 +58,36 @@ describe("osmToGeoJson", () => {
         ],
         tags: { highway: "path", name: "Boldog-réti ösvény" },
       },
-      // Degenerate way: a single node, cannot be an edge → dropped.
+      // A non-member way (not in any route) → dropped.
       {
         type: "way",
-        id: 1002,
-        nodes: [9],
-        geometry: [{ lat: 47.53, lon: 18.97 }],
+        id: 2002,
+        nodes: [8, 9],
+        geometry: [
+          { lat: 47.53, lon: 18.97 },
+          { lat: 47.531, lon: 18.971 },
+        ],
         tags: { highway: "footway" },
       },
-      // Non-way element → ignored.
-      { type: "node", id: 5, tags: {} },
+      // A member way with only one point → dropped.
+      {
+        type: "way",
+        id: 1003,
+        nodes: [5],
+        geometry: [{ lat: 47.54, lon: 18.98 }],
+        tags: { highway: "path" },
+      },
     ],
   };
 
   const fc = osmToGeoJson(sample);
 
-  it("keeps only usable ways (>= 2 points)", () => {
-    expect(fc.type).toBe("FeatureCollection");
+  it("keeps only official member ways with usable geometry", () => {
     expect(fc.features).toHaveLength(1);
     expect(fc.features[0].id).toBe(1001);
   });
 
   it("emits [lon, lat] LineString coordinates", () => {
-    expect(fc.features[0].geometry.type).toBe("LineString");
     expect(fc.features[0].geometry.coordinates).toEqual([
       [18.96, 47.52],
       [18.961, 47.521],
@@ -71,7 +95,13 @@ describe("osmToGeoJson", () => {
     ]);
   });
 
-  it("preserves osm tags, way id and node ids for the graph builder", () => {
+  it("annotates each way with the distinct colours and markings of its routes", () => {
+    const { properties } = fc.features[0];
+    expect(properties.colours).toEqual(["blue", "red"]);
+    expect(properties.markings).toEqual(["K↺", "P"]);
+  });
+
+  it("preserves osm node ids, way id and way tags for downstream", () => {
     const { properties } = fc.features[0];
     expect(properties.osmid).toBe(1001);
     expect(properties.nodes).toEqual([1, 2, 3]);

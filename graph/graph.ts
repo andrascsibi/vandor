@@ -40,6 +40,10 @@ export interface Edge {
   coordinates: [number, number][];
   /** Distinct OSM way ids this segment is built from. */
   ways: number[];
+  /** Distinct waymark colours of the route(s) along this segment (e.g. "blue"). */
+  colours: string[];
+  /** Distinct Hungarian mark codes along this segment (e.g. "K↺", "OKT"). */
+  markings: string[];
   /** First trail name encountered along the segment, if any. */
   name?: string;
   /** First highway tag encountered along the segment. */
@@ -81,6 +85,8 @@ interface RawEdge {
   to: number;
   coordinates: [number, number][];
   ways: number[];
+  colours: string[];
+  markings: string[];
   name?: string;
   highway?: string;
 }
@@ -126,6 +132,8 @@ function contractChains(edges: RawEdge[]): RawEdge[] {
   const walk = (start: number, startEdge: number): RawEdge => {
     const coordinates: [number, number][] = [];
     const ways = new Set<number>();
+    const colours = new Set<string>();
+    const markings = new Set<string>();
     let name: string | undefined;
     let highway: string | undefined;
     let cur = start;
@@ -136,6 +144,8 @@ function contractChains(edges: RawEdge[]): RawEdge[] {
       used.add(ei);
       const e = edges[ei];
       for (const w of e.ways) ways.add(w);
+      for (const c of e.colours) colours.add(c);
+      for (const m of e.markings) markings.add(m);
       name ??= e.name;
       highway ??= e.highway;
 
@@ -151,12 +161,30 @@ function contractChains(edges: RawEdge[]): RawEdge[] {
       }
 
       if (!isThrough(exit) || exit === start) {
-        return { from: start, to: exit, coordinates, ways: [...ways], name, highway };
+        return {
+          from: start,
+          to: exit,
+          coordinates,
+          ways: [...ways],
+          colours: [...colours].sort(),
+          markings: [...markings].sort(),
+          name,
+          highway,
+        };
       }
       const list = inc.get(exit)!;
       const next = list[0].edge === ei ? list[1] : list[0];
       if (used.has(next.edge)) {
-        return { from: start, to: exit, coordinates, ways: [...ways], name, highway };
+        return {
+          from: start,
+          to: exit,
+          coordinates,
+          ways: [...ways],
+          colours: [...colours].sort(),
+          markings: [...markings].sort(),
+          name,
+          highway,
+        };
       }
       cur = exit;
       ei = next.edge;
@@ -192,6 +220,8 @@ export function buildSegmentGraph(
     const name = typeof f.properties.name === "string" ? f.properties.name : undefined;
     const highway =
       typeof f.properties.highway === "string" ? f.properties.highway : undefined;
+    const colours = f.properties.colours ?? [];
+    const markings = f.properties.markings ?? [];
 
     for (let i = 0; i < nodes.length; i++) coord.set(nodes[i], coords[i]);
     for (let i = 0; i + 1 < nodes.length; i++) {
@@ -203,6 +233,8 @@ export function buildSegmentGraph(
         to: b,
         coordinates: [coords[i], coords[i + 1]],
         ways: [wayId],
+        colours,
+        markings,
         name,
         highway,
       });
@@ -288,6 +320,8 @@ export function buildSegmentGraph(
       lengthM: Math.round(polylineLength(e.coordinates) * 10) / 10,
       coordinates: e.coordinates,
       ways: e.ways,
+      colours: e.colours,
+      markings: e.markings,
     };
     if (e.name !== undefined) edge.name = e.name;
     if (e.highway !== undefined) edge.highway = e.highway;

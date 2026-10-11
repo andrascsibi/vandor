@@ -16,7 +16,7 @@ function way(
     type: "Feature",
     id,
     geometry: { type: "LineString", coordinates },
-    properties: { ...tags, osmid: id, nodes },
+    properties: { ...tags, osmid: id, nodes, colours: [], markings: [] },
   };
 }
 function fc(features: TrailFeature[]): TrailFeatureCollection {

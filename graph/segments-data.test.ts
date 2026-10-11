@@ -13,8 +13,8 @@ const g = JSON.parse(readFileSync(dataPath, "utf8")) as SegmentGraph;
 
 describe("data/segments.json", () => {
   it("has a sane number of vertices and segments", () => {
-    expect(g.vertices.length).toBeGreaterThan(500);
-    expect(g.edges.length).toBeGreaterThan(500);
+    expect(g.vertices.length).toBeGreaterThan(50);
+    expect(g.edges.length).toBeGreaterThan(50);
   });
 
   it("gives every vertex a contiguous index matching its position", () => {
@@ -77,8 +77,15 @@ describe("data/segments.json", () => {
     expect(used.size).toBe(g.vertices.length);
   });
 
-  it("carries a known Buda-hills trail name through to a segment", () => {
-    const names = new Set(g.edges.map((e) => e.name).filter(Boolean));
-    expect(names.has("Hárshegyi körút")).toBe(true);
+  it("carries a colour and marking onto every segment (all official)", () => {
+    for (const e of g.edges) {
+      expect(e.colours.length).toBeGreaterThanOrEqual(1);
+      expect(e.markings.length).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("propagates the Országos Kéktúra marking through to a segment", () => {
+    const markings = new Set(g.edges.flatMap((e) => e.markings));
+    expect(markings.has("OKT")).toBe(true);
   });
 });

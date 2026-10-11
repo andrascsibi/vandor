@@ -7,9 +7,11 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
 ## Thin vertical slice → working app by Task 3
 
 - [x] **T1 · Ingest (1 area).** Overpass query for a small bbox (Buda hills:
-  Hárs-hegy / János-hegy / Hármashatár-hegy), trail tags only → `raw/trails.geojson`
-  on disk, via a rerunnable script. *Product:* a real data file + reproducible fetch.
-  *Testable:* way count sane, a known trail present.
+  Hárs-hegy / János-hegy / Hármashatár-hegy): **official marked trails only** —
+  ways that are members of `route=hiking` relations, annotated with the waymark
+  colour + mark code (osmc:symbol) → `raw/trails.geojson`, via a rerunnable script.
+  *Product:* a real data file + reproducible fetch. *Testable:* way count sane,
+  every way has a colour + marking, OKT present.
 
 - [x] **T2 · Graph builder.** Pure transform: ways → segment graph (split at junction
   nodes, contract degree-2 chains, 50m merge rule, haversine lengths) → `data/segments.json`.

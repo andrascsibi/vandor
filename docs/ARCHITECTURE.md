@@ -18,12 +18,16 @@ A **hike** is a *route*. The thing we pick at random is a **segment** (an edge).
 
 ## Data source
 
-- **Substrate = OpenStreetMap.** Freely bulk-downloadable, contains the full trail
-  graph (`highway=path|footway|track|steps`, `route=hiking` relations), shared
-  nodes = junctions, and the Hungarian *jelzett turistaút* network + POIs
-  (`natural=peak|spring|saddle`, `tourism=viewpoint`, `amenity=shelter|parking`,
-  `highway=bus_stop`).
-  - MVP ingest via **Overpass API** (bbox + tag filter — no heavy toolchain).
+- **Substrate = OpenStreetMap.** Freely bulk-downloadable. We ingest **only the
+  official Hungarian marked-trail network** (*jelzett turistaút*): ways that are
+  members of `route=hiking` relations, which carry the coloured waymark
+  (`osmc:symbol`, e.g. `blue:white:blue_circle`) and mark code (`K↺`, `OKT`). This
+  deliberately excludes unmarked park paths etc. — in HU only marked routes count
+  as hiking (unless freestyling). POIs come later (T4):
+  `natural=peak|spring|saddle`, `tourism=viewpoint`, `amenity=shelter|parking`,
+  `highway=bus_stop`.
+  - MVP ingest via **Overpass API** (select hiking relations → member ways clipped
+    to bbox, join colour/marking onto each way — no heavy toolchain).
   - Scale path if we outgrow Overpass: Geofabrik Hungary `.osm.pbf` + osmium.
 - **Mapy = consumer, not source.** Used for: share deep-links (start/end points)
   and optionally outdoor tiles (API-key gated).

@@ -39,5 +39,7 @@ npm run graph    # raw → data/segments.json (the segment DB)
 ```
 
 _Status: T3 done — the picker app ships. Press **🎲 Vándor dob** for a random
-Buda-hills trail segment on an OpenTopoMap, with a Mapy.com hiking-route share
-link. Next: T4 full-region ingest + POI vertices. See backlog._
+**official marked-trail** (jelzett turistaút) segment, drawn in its real waymark
+colour (kék / piros / zöld / sárga…) on an OpenTopoMap, with a Mapy.com
+hiking-route share link. Ingest keeps only ways in `route=hiking` relations.
+Next: T4 full-region ingest + POI vertices. See backlog._

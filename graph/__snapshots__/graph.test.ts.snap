@@ -4,6 +4,7 @@ exports[`buildSegmentGraph — golden > matches the golden snapshot for a small 
 {
   "edges": [
     {
+      "colours": [],
       "coordinates": [
         [
           19,
@@ -22,6 +23,7 @@ exports[`buildSegmentGraph — golden > matches the golden snapshot for a small 
       "highway": "path",
       "id": 0,
       "lengthM": 444.8,
+      "markings": [],
       "name": "Kéktúra",
       "to": 1,
       "ways": [
@@ -29,6 +31,7 @@ exports[`buildSegmentGraph — golden > matches the golden snapshot for a small 
       ],
     },
     {
+      "colours": [],
       "coordinates": [
         [
           19,
@@ -47,12 +50,14 @@ exports[`buildSegmentGraph — golden > matches the golden snapshot for a small 
       "highway": "path",
       "id": 1,
       "lengthM": 444.8,
+      "markings": [],
       "to": 2,
       "ways": [
         2,
       ],
     },
     {
+      "colours": [],
       "coordinates": [
         [
           19,
@@ -67,6 +72,7 @@ exports[`buildSegmentGraph — golden > matches the golden snapshot for a small 
       "highway": "footway",
       "id": 2,
       "lengthM": 300.5,
+      "markings": [],
       "to": 3,
       "ways": [
         3,

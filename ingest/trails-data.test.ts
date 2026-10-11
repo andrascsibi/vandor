@@ -1,6 +1,7 @@
 // Integration check over the committed ingest output (raw/trails.geojson).
-// Guards the T1 "product": way count sane, geometry well-formed, a known
-// Buda-hills trail present, and the node ids the graph builder depends on.
+// Guards the T1 "product": every way is an official marked trail (jelzett
+// turistaút), annotated with colour + mark code, geometry well-formed, within
+// the Buda-hills bbox, carrying the node ids the graph builder depends on.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -12,11 +13,9 @@ const dataPath = resolve(__dirname, "../raw/trails.geojson");
 const fc = JSON.parse(readFileSync(dataPath, "utf8")) as TrailFeatureCollection;
 
 describe("raw/trails.geojson", () => {
-  it("is a FeatureCollection with a sane number of trail ways", () => {
+  it("is a FeatureCollection with a sane number of marked-trail ways", () => {
     expect(fc.type).toBe("FeatureCollection");
-    // The Buda-hills slice has thousands of ways; anything under a few hundred
-    // means the fetch was truncated or the bbox/filter regressed.
-    expect(fc.features.length).toBeGreaterThan(500);
+    expect(fc.features.length).toBeGreaterThan(100);
   });
 
   it("every feature is a LineString with >= 2 coordinates", () => {
@@ -32,11 +31,23 @@ describe("raw/trails.geojson", () => {
     }
   });
 
-  it("contains a known Buda-hills trail", () => {
-    const names = new Set(
-      fc.features.map((f) => f.properties.name).filter(Boolean),
-    );
-    expect(names.has("Hárshegyi körút")).toBe(true);
+  it("only contains official trails: every way has a colour and a marking", () => {
+    for (const f of fc.features) {
+      expect(f.properties.colours.length).toBeGreaterThanOrEqual(1);
+      expect(f.properties.markings.length).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("covers the four classic Hungarian mark colours", () => {
+    const colours = new Set(fc.features.flatMap((f) => f.properties.colours));
+    for (const c of ["blue", "red", "green", "yellow"]) {
+      expect(colours.has(c)).toBe(true);
+    }
+  });
+
+  it("includes the Országos Kéktúra (OKT) marking", () => {
+    const markings = new Set(fc.features.flatMap((f) => f.properties.markings));
+    expect(markings.has("OKT")).toBe(true);
   });
 
   it("geometry sits in the Buda hills (within a small boundary margin of the bbox)", () => {

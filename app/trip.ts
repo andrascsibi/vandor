@@ -36,3 +36,25 @@ export function formatDistance(meters: number): string {
   if (meters < 1000) return `${Math.round(meters)} m`;
   return `${(meters / 1000).toFixed(1).replace(".", ",")} km`;
 }
+
+// Waymark colour → a hex that reads on an OpenTopoMap background (with a white
+// casing under the line). Keys are the osmc:symbol waycolours we see in HU.
+const COLOUR_HEX: Record<string, string> = {
+  blue: "#1c66c9",
+  red: "#e03131",
+  green: "#2f9e44",
+  yellow: "#e0a100",
+  purple: "#9c36b5",
+  black: "#343a40",
+};
+const FALLBACK_HEX = "#e8590c";
+// A segment can be shared by several routes; show the highest-priority colour.
+// National blue (OKT) first, then the other classics.
+const COLOUR_PRIORITY = ["blue", "red", "green", "yellow", "purple", "black"];
+
+/** Pick the display hex for a segment's waymark colour(s). */
+export function trailColour(colours: string[]): string {
+  for (const c of COLOUR_PRIORITY) if (colours.includes(c)) return COLOUR_HEX[c];
+  for (const c of colours) if (COLOUR_HEX[c]) return COLOUR_HEX[c];
+  return FALLBACK_HEX;
+}

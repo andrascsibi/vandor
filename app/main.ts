@@ -3,7 +3,13 @@ import "./style.css";
 import * as L from "leaflet";
 import graphUrl from "../data/segments.json?url";
 import type { Edge, SegmentGraph } from "../graph/graph.ts";
-import { pickRandomSegment, shareEndpoints, mapyRouteUrl, formatDistance } from "./trip.ts";
+import {
+  pickRandomSegment,
+  shareEndpoints,
+  mapyRouteUrl,
+  formatDistance,
+  trailColour,
+} from "./trip.ts";
 
 const BUDA_HILLS_CENTER: L.LatLngTuple = [47.54, 18.97];
 
@@ -38,26 +44,31 @@ let highlight: L.LayerGroup | null = null;
 function showSegment(edge: Edge): void {
   highlight?.remove();
 
-  const line = L.polyline(edge.coordinates.map(toLatLng), {
-    color: "#e8590c",
-    weight: 5,
-    opacity: 0.9,
-  });
+  const latlngs = edge.coordinates.map(toLatLng);
+  const colour = trailColour(edge.colours);
+  // White casing under the coloured line so every waymark colour reads on topo.
+  const casing = L.polyline(latlngs, { color: "#fff", weight: 8, opacity: 0.95 });
+  const line = L.polyline(latlngs, { color: colour, weight: 4.5, opacity: 1 });
   const start = edge.coordinates[0];
   const end = edge.coordinates[edge.coordinates.length - 1];
-  const dot = (p: [number, number], fill: string) =>
+  const dot = (p: [number, number]) =>
     L.circleMarker(toLatLng(p), {
-      radius: 7,
+      radius: 6,
       color: "#fff",
       weight: 2,
-      fillColor: fill,
+      fillColor: "#2b2620",
       fillOpacity: 1,
     });
-  highlight = L.layerGroup([line, dot(start, "#2b8a3e"), dot(end, "#c92a2a")]).addTo(map);
+  highlight = L.layerGroup([casing, line, dot(start), dot(end)]).addTo(map);
   map.fitBounds(line.getBounds(), { padding: [70, 70], maxZoom: 16 });
 
-  const name = edge.name ? escapeHtml(edge.name) : "névtelen szakasz";
-  infoEl.innerHTML = `<div class="name">${name}</div><div class="len">${formatDistance(edge.lengthM)}</div>`;
+  const marks = edge.markings.length ? escapeHtml(edge.markings.join(" · ")) : "jelzett szakasz";
+  const swatch = `<span class="swatch" style="background:${colour}"></span>`;
+  const wayName = edge.name ? `<div class="wayname">${escapeHtml(edge.name)}</div>` : "";
+  infoEl.innerHTML =
+    `<div class="mark">${swatch}${marks}</div>` +
+    `<div class="len">${formatDistance(edge.lengthM)}</div>` +
+    wayName;
 
   const [from, to] = shareEndpoints(edge);
   mapyEl.href = mapyRouteUrl(from, to);
