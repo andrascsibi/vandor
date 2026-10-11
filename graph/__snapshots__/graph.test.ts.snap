@@ -1,0 +1,103 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildSegmentGraph — golden > matches the golden snapshot for a small mixed network 1`] = `
+{
+  "edges": [
+    {
+      "coordinates": [
+        [
+          19,
+          47.5,
+        ],
+        [
+          19,
+          47.502,
+        ],
+        [
+          19,
+          47.504,
+        ],
+      ],
+      "from": 0,
+      "highway": "path",
+      "id": 0,
+      "lengthM": 444.8,
+      "name": "Kéktúra",
+      "to": 1,
+      "ways": [
+        1,
+      ],
+    },
+    {
+      "coordinates": [
+        [
+          19,
+          47.504,
+        ],
+        [
+          19,
+          47.506,
+        ],
+        [
+          19,
+          47.508,
+        ],
+      ],
+      "from": 1,
+      "highway": "path",
+      "id": 1,
+      "lengthM": 444.8,
+      "to": 2,
+      "ways": [
+        2,
+      ],
+    },
+    {
+      "coordinates": [
+        [
+          19,
+          47.504,
+        ],
+        [
+          19.004,
+          47.504,
+        ],
+      ],
+      "from": 1,
+      "highway": "footway",
+      "id": 2,
+      "lengthM": 300.5,
+      "to": 3,
+      "ways": [
+        3,
+      ],
+    },
+  ],
+  "vertices": [
+    {
+      "id": 0,
+      "lat": 47.5,
+      "lon": 19,
+      "osmId": 1,
+    },
+    {
+      "id": 1,
+      "lat": 47.504,
+      "lon": 19,
+      "osmId": 3,
+    },
+    {
+      "id": 2,
+      "lat": 47.508,
+      "lon": 19,
+      "osmId": 5,
+    },
+    {
+      "id": 3,
+      "lat": 47.504,
+      "lon": 19.004,
+      "osmId": 6,
+    },
+  ],
+}
+`;
