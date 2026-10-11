@@ -1,0 +1,111 @@
+:root {
+  --earth: #5c4a33;
+  --trail: #e8590c;
+  --ink: #2b2620;
+  --paper: #fcfbf7;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--ink);
+}
+
+#map {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: #e9e4d8;
+}
+
+#panel {
+  position: absolute;
+  z-index: 1000;
+  top: max(1rem, env(safe-area-inset-top));
+  left: max(1rem, env(safe-area-inset-left));
+  width: min(20rem, calc(100vw - 2rem));
+  padding: 1rem 1.1rem 1.1rem;
+  background: var(--paper);
+  border-radius: 14px;
+  box-shadow: 0 6px 24px rgba(40, 30, 15, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.brand {
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--earth);
+}
+
+#roll {
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 650;
+  padding: 0.7rem 1rem;
+  border: none;
+  border-radius: 10px;
+  background: var(--trail);
+  color: #fff;
+  cursor: pointer;
+  transition: transform 0.06s ease, filter 0.15s ease;
+}
+
+#roll:hover {
+  filter: brightness(1.06);
+}
+
+#roll:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-height: 2.6rem;
+}
+
+.info .name {
+  font-weight: 650;
+  font-size: 1.05rem;
+  line-height: 1.25;
+}
+
+.info .len {
+  color: var(--earth);
+  font-variant-numeric: tabular-nums;
+}
+
+.info .hint {
+  color: #8a8172;
+  font-size: 0.9rem;
+}
+
+.mapy {
+  color: var(--trail);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.mapy:hover {
+  text-decoration: underline;
+}
+
+.mapy[aria-disabled="true"] {
+  color: #b7afa0;
+  pointer-events: none;
+}
+
+/* Leaflet attribution sits better with a touch of transparency. */
+.leaflet-container {
+  font-family: inherit;
+}

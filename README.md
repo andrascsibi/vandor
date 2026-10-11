@@ -22,6 +22,22 @@ graph) and plan the awesomest trip that walks it.
 Vanilla TS + Vite + Vitest + Leaflet. OpenStreetMap data, OpenTopoMap tiles,
 Mapy.cz share links. Minimal deps.
 
-_Status: T2 done — `npm run ingest` ships `raw/trails.geojson` (2.7k ways);
-`npm run graph` contracts it into `data/segments.json` (1.1k vertices, 1.6k
-segments, 307 km). Next: T3 map UI. See backlog._
+## Run it
+
+```
+npm install
+npm run dev      # the app at http://localhost:5173
+npm test         # 35 tests
+npm run build    # static site → dist/ (deployed to GitHub Pages on push to main)
+```
+
+Data pipeline (rerun occasionally, output is committed):
+
+```
+npm run ingest   # Overpass → raw/trails.geojson
+npm run graph    # raw → data/segments.json (the segment DB)
+```
+
+_Status: T3 done — the picker app ships. Press **🎲 Vándor dob** for a random
+Buda-hills trail segment on an OpenTopoMap, with a Mapy.com hiking-route share
+link. Next: T4 full-region ingest + POI vertices. See backlog._

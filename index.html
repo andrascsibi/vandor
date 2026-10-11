@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="hu">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Vándor 🧭 — véletlen túraszakasz</title>
+    <meta
+      name="description"
+      content="Nyomd meg a gombot, és Vándor kidob egy véletlen túraszakaszt a budai hegyekből a vasárnapi kiránduláshoz."
+    />
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <aside id="panel">
+      <header class="brand">Vándor <span aria-hidden="true">🧭</span></header>
+      <button id="roll" type="button">🎲 Vándor dob</button>
+      <div id="info" class="info"><div class="hint">Töltés…</div></div>
+      <a id="mapy" class="mapy" target="_blank" rel="noopener noreferrer" aria-disabled="true"
+        >Nyisd meg Mapyn ↗</a
+      >
+    </aside>
+
+    <script type="module" src="/app/main.ts"></script>
+  </body>
+</html>

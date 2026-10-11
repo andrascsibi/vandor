@@ -16,7 +16,7 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
   *Product:* the segment DB. *Testable:* unit tests on topology (junction → vertex,
   sub-50m merge, edge count), golden file.
 
-- [ ] **T3 · Map UI MVP.** Vite + Leaflet + OpenTopoMap. Load `segments.json`,
+- [x] **T3 · Map UI MVP.** Vite + Leaflet + OpenTopoMap. Load `segments.json`,
   "🎲 Vándor dob" button highlights a random edge, show its two POI endpoints,
   "Nyisd meg Mapyn" share link. *Product:* **the app you open Sunday morning** —
   the original brief, backed by real data. Puzzle mode = just this.
