@@ -118,6 +118,13 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
   **🔄 Zárd be a kört** button that routes the ends back together over the rest
   of the network (`closeTourLoop`, each selected segment walked at most once) —
   an instant loop planner. *Járt utat járatlanért.*
+  - **Note on loop length:** an early test gave an 18 km loop where a 12.9 km one
+    existed. That was **not** a routing-quality / out-and-back issue — it was the
+    split-dead-end bug (false dead-ends across a road crossing, fixed in the graph
+    bridge pass) forcing a long detour. Resolved. Whether a true optimiser could
+    still trim a loop by allowing a *tiny* there-and-back instead of a long way
+    round is an open, separate question (T9) — unproven, and unrelated to that
+    example.
 
 - [x] **T7k · Dead ends count twice.** Genuine dead ends (summits / trail
   termini — interior degree-1 vertices; map-boundary stubs excluded) are ignored
