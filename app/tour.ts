@@ -3,7 +3,7 @@
 // the túra as an ordered list of edge ids (insertion order); these helpers do
 // membership, totals, and ordering the segments into a walking sequence for the
 // Mapy link + to find the túra's open ends.
-import type { Edge, Vertex } from "../graph/graph.ts";
+import { haversine, type Edge, type Vertex } from "../graph/graph.ts";
 
 /** [lon, lat] — the project's GeoJSON coordinate order. */
 export type Point = [number, number];
@@ -100,11 +100,16 @@ interface Link {
  * one, else any vertex; follow unused segments, sharing vertices. When a walk
  * dead-ends with segments left (a disconnected or branching túra), it jumps to
  * a remaining segment — Mapy will route across the gap.
+ *
+ * `preferredStart` (the chosen parking, when there is one) biases the start: the
+ * chain begins at the open end nearest the car, so Mapy flows park → near end →
+ * through the túra → far end → back, instead of park → middle → back-and-forth.
  */
 export function orderedWaypoints(
   ids: number[],
   byId: Map<number, Edge>,
   vById: Map<number, Vertex>,
+  preferredStart?: Point,
 ): Point[] {
   const edges = ids.map((id) => byId.get(id)).filter((e): e is Edge => !!e && e.from !== e.to);
   if (edges.length === 0) return [];
@@ -120,19 +125,29 @@ export function orderedWaypoints(
     addLink(e.to, { edgeId: e.id, other: e.from });
   }
 
-  // Prefer an open end (degree 1) as the start, else the first segment's `from`.
-  let start = edges[0].from;
-  for (const [v, links] of adj) {
-    if (links.length === 1) {
-      start = v;
-      break;
-    }
-  }
-
   const coord = (v: number): Point => {
     const vx = vById.get(v)!;
     return [vx.lon, vx.lat];
   };
+
+  // Choose the chain's start. The candidate starts are the open ends (vertices
+  // used by exactly one túra segment); if there are none (a closed loop) any
+  // vertex will do. With a preferred start (the chosen parking) pick the
+  // candidate nearest it, so the route leaves from the end closest to the car.
+  const openEnds: number[] = [];
+  for (const [v, links] of adj) if (links.length === 1) openEnds.push(v);
+  const candidates = openEnds.length ? openEnds : [...adj.keys()];
+  let start = candidates[0] ?? edges[0].from;
+  if (preferredStart) {
+    let best = Infinity;
+    for (const v of candidates) {
+      const d = haversine(coord(v), preferredStart);
+      if (d < best) {
+        best = d;
+        start = v;
+      }
+    }
+  }
   const usedEdges = new Set<number>();
   const out: Point[] = [coord(start)];
   let cur = start;

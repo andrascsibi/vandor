@@ -62,6 +62,20 @@ describe("orderedWaypoints", () => {
     expect(wp).toHaveLength(4);
     expect(wp).toContainEqual([19.3, 47.0]);
   });
+
+  it("starts the chain at the open end nearest the preferred start (parking)", () => {
+    const byId = new Map([e(1, 1, 2, 1), e(2, 0, 1, 1), e(3, 2, 3, 1)].map((x) => [x.id, x]));
+    // Parking next to vertex 3's end → the walk should run 3→2→1→0, not 0→3.
+    const wp = orderedWaypoints([1, 2, 3], byId, vs, [19.31, 47.0]);
+    expect(wp).toEqual([
+      [19.3, 47.0], [19.2, 47.0], [19.1, 47.0], [19.0, 47.0],
+    ]);
+  });
+
+  it("without a preferred start keeps the open-end-first default", () => {
+    const byId = new Map([e(1, 1, 2, 1), e(2, 0, 1, 1), e(3, 2, 3, 1)].map((x) => [x.id, x]));
+    expect(orderedWaypoints([1, 2, 3], byId, vs)[0]).toEqual([19.0, 47.0]);
+  });
 });
 
 describe("tourAccessPoints", () => {

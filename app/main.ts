@@ -241,9 +241,10 @@ function renderPanel(cands: AccessCandidate[]): void {
 }
 
 function updateLinks(): void {
-  const wp = orderedWaypoints(tour, edgesById, vById);
-  // With a chosen start, route park → túra → back to the car.
+  // With a chosen start, route park → túra → back to the car, and bias the
+  // walking order to begin at the túra end nearest the car.
   const chosen = chosenAccess ? ([chosenAccess.lon, chosenAccess.lat] as [number, number]) : null;
+  const wp = orderedWaypoints(tour, edgesById, vById, chosen ?? undefined);
   const points = chosen ? [chosen, ...wp, chosen] : wp;
   const mapyUrl = mapyTripUrl(points);
   if (mapyUrl) {
