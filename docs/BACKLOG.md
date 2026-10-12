@@ -94,17 +94,39 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
     drive-to-the-parking link sits under the Mapy link.
   - [ ] *Later:* elevation profile of the túra.
 
-> **🐞 START HERE NEXT SESSION — Mapy waypoint order.** When a start parking is
-> chosen the route is built as `[chosen, ...orderedWaypoints, chosen]`, but
-> `orderedWaypoints` (in `app/tour.ts`) begins its greedy chain at an arbitrary
-> open end (degree-1 vertex) / the first edge's `from` — **not** the túra end
-> nearest the chosen access. So Mapy jumps park → middle/far end → back-and-forth
-> → car. Fix: start the chain at the túra endpoint closest to the chosen access so
-> it flows park → near end → through the túra → far end → back. Minimal fix:
-> reverse `wp` when `haversine(wp[0], access) > haversine(wp.at(-1), access)`.
-> Cleaner: let `orderedWaypoints` take a preferred start point (it already picks a
-> `start` vertex — bias it toward the access). Loops: both ends coincide, so the
-> reverse check is a no-op; still fine. Add a unit test for the ordering.
+- [x] **T7g · Mapy waypoint order.** `orderedWaypoints` now takes an optional
+  `preferredStart` and begins the greedy chain at the open end nearest it; with a
+  chosen parking the route flows park → near end → through the túra → far end →
+  back, instead of park → middle → back-and-forth → car. Unit-tested + verified
+  end-to-end (first Mapy waypoint is the túra end closest to the car).
+
+## Proto-planner (routing over the segment graph) — current focus
+
+- [x] **T7h · Router substrate.** `app/router.ts`: a pure Dijkstra
+  (`buildRouteGraph` + `shortestPath`, ~800-vertex linear-scan frontier) and the
+  túra topology helpers it feeds — `tourComponents` (gap detection),
+  `tourOpenEnds`, `deadEndVertices`, `fillTourGaps`, `closeTourLoop`. Fully
+  unit-tested; runs over the real 1054-segment graph in a few ms.
+
+- [x] **T7i · Discontinuous túra: warn + fill the gap.** When the selected
+  segments fall into several disconnected pieces (common: clicking non-adjacent
+  segments of the same trail), the panel shows an amber "⚠️ Nem összefüggő túra"
+  warning and a **Töltsd ki a hézagot** button that routes the missing trail
+  between the pieces (`fillTourGaps`) and reframes the map.
+
+- [x] **T7j · Close the loop.** A continuous túra with ≥2 live open ends gets a
+  **🔄 Zárd be a kört** button that routes the ends back together over the rest
+  of the network (`closeTourLoop`, each selected segment walked at most once) —
+  an instant loop planner. *Járt utat járatlanért.*
+
+- [x] **T7k · Dead ends count twice.** Genuine dead ends (summits / trail
+  termini — interior degree-1 vertices; map-boundary stubs excluded) are ignored
+  by the router (Dijkstra never routes through a degree-1 vertex) but, when a user
+  selects such a spur, it's walked oda-vissza: the túra headline shows the real
+  walking distance, spur rows get an ↩ marker, and the extra is noted.
+  - [ ] *Possible next:* distinguish a "there-and-back" túra total from a "loop"
+    total once a start is chosen; let close-the-loop prefer the nearest live ends
+    to the parking; multi-leg loops when the túra forks.
 
 ## Automatic planner (later)
 
