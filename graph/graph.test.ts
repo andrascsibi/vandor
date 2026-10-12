@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildSegmentGraph, haversine, type SegmentGraph } from "./graph.ts";
+import { buildSegmentGraph, haversine, BRIDGE_THRESHOLD_M, type SegmentGraph } from "./graph.ts";
 import type { TrailFeature, TrailFeatureCollection } from "../ingest/overpass.ts";
 
 // Helper: build a trail feature from node ids + coords (coords default to a
@@ -144,6 +144,41 @@ describe("buildSegmentGraph — 50m merge rule", () => {
       if (e.to !== e.from) degree[e.to]++;
     }
     expect(degree.some((d) => d === 2)).toBe(false);
+  });
+});
+
+describe("buildSegmentGraph — bridge micro-gaps (road crossings)", () => {
+  // Two ways that each dead-end, their near ends ~10m apart but sharing no node —
+  // a trail crossing a road, split into two OSM ways. gapA/gapB are the two sides.
+  const gapA: [number, number] = [19.0, 47.51];
+  const gapB: [number, number] = [19.0, 47.5100899]; // ~10m north of gapA
+  const trails = () =>
+    fc([
+      way([1, 2, 3], [P(0), P(1), gapA]), // dead-end node 1 … node 3 at the road
+      way([4, 5, 6], [gapB, [19.0, 47.518], [19.0, 47.52]]), // node 4 at the road … dead-end node 6
+    ]);
+
+  it("merges two dead-ends across a sub-threshold gap into one through-segment", () => {
+    expect(haversine(gapA, gapB)).toBeLessThan(BRIDGE_THRESHOLD_M);
+    const g = buildSegmentGraph(trails());
+    // nodes 3 and 4 merge → degree-2 → spliced: one edge between the real ends.
+    expect(g.vertices).toHaveLength(2);
+    expect(g.edges).toHaveLength(1);
+    expect(g.edges[0].ways).toHaveLength(2); // spans both ways across the road
+    expect(g.edges[0].from).not.toBe(g.edges[0].to);
+  });
+
+  it("leaves the false dead-ends in place when bridging is disabled", () => {
+    const g = buildSegmentGraph(trails(), { bridgeThresholdM: 0 });
+    expect(g.vertices).toHaveLength(4); // two stubs, four dead ends
+    expect(g.edges).toHaveLength(2);
+  });
+
+  it("does not merge a genuine terminus far from any other trail", () => {
+    // A lone spur: its dead end is nowhere near another vertex → untouched.
+    const g = buildSegmentGraph(fc([way([1, 2], [P(0), P(1)])]));
+    expect(g.vertices).toHaveLength(2);
+    expect(g.edges).toHaveLength(1);
   });
 });
 

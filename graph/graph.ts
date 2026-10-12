@@ -18,6 +18,10 @@
 import type { TrailFeatureCollection } from "../ingest/overpass.ts";
 
 export const MERGE_THRESHOLD_M = 50;
+// A trail dead-end sitting within this of another trail vertex is treated as the
+// same junction split across a road crossing (OSM ways not sharing a node), and
+// merged — see the bridge pass in buildSegmentGraph.
+export const BRIDGE_THRESHOLD_M = 20;
 
 /** Nearest car access point to a vertex (T6): a parking POI, crow-flies. */
 export interface AccessPoint {
@@ -223,9 +227,10 @@ function contractChains(edges: RawEdge[]): RawEdge[] {
 
 export function buildSegmentGraph(
   fc: TrailFeatureCollection,
-  opts: { mergeThresholdM?: number } = {},
+  opts: { mergeThresholdM?: number; bridgeThresholdM?: number } = {},
 ): SegmentGraph {
   const mergeThresholdM = opts.mergeThresholdM ?? MERGE_THRESHOLD_M;
+  const bridgeThresholdM = opts.bridgeThresholdM ?? BRIDGE_THRESHOLD_M;
 
   // 1. One RawEdge per consecutive OSM node pair (a single polyline link).
   const coord = new Map<number, [number, number]>();
@@ -313,6 +318,90 @@ export function buildSegmentGraph(
     // Re-contract: the merge can leave degree-2 vertices; collapse them too.
     working = contractChains(remapped);
   }
+
+  // 4. Bridge micro-gaps between trails. A dead-end endpoint (degree 1) sitting
+  //    within bridgeThresholdM of another trail vertex, with no edge joining
+  //    them, is almost always the same junction split across a road crossing:
+  //    the two OSM ways meet at the road but don't share a node, so contraction
+  //    left two false dead-ends a few metres apart. Merge each such dead-end into
+  //    its nearest eligible neighbour and re-contract — two stubs across the road
+  //    splice into one through-segment; a stub meeting a junction joins it. A
+  //    genuine terminus (summit, real trail end) has no trail vertex that close,
+  //    so it's left alone. Iterated to a fixpoint (each round removes a vertex).
+  for (;;) {
+    const degree = new Map<number, number>();
+    const neighbours = new Map<number, Set<number>>();
+    const addNeighbour = (a: number, b: number) => {
+      const s = neighbours.get(a);
+      if (s) s.add(b);
+      else neighbours.set(a, new Set([b]));
+    };
+    for (const e of working) {
+      if (e.from === e.to) continue;
+      degree.set(e.from, (degree.get(e.from) ?? 0) + 1);
+      degree.set(e.to, (degree.get(e.to) ?? 0) + 1);
+      addNeighbour(e.from, e.to);
+      addNeighbour(e.to, e.from);
+    }
+    const nodes = [...degree.keys()];
+    // Seed the union-find over *every* endpoint (self-loops included), so find()
+    // is defined for all edges in the remap below — only degree-1 nodes are
+    // scanned as bridge candidates, but any edge's ends may need remapping.
+    const parent = new Map<number, number>();
+    for (const e of working) {
+      if (!parent.has(e.from)) parent.set(e.from, e.from);
+      if (!parent.has(e.to)) parent.set(e.to, e.to);
+    }
+    const find = (x: number): number => {
+      let root = x;
+      while (parent.get(root)! !== root) root = parent.get(root)!;
+      let cur = x;
+      while (parent.get(cur)! !== root) {
+        const nxt = parent.get(cur)!;
+        parent.set(cur, root);
+        cur = nxt;
+      }
+      return root;
+    };
+    let didUnion = false;
+    const union = (x: number, y: number) => {
+      const rx = find(x);
+      const ry = find(y);
+      if (rx === ry) return;
+      if (rx < ry) parent.set(ry, rx); // smaller osm id wins → deterministic rep
+      else parent.set(rx, ry);
+      didUnion = true;
+    };
+    for (const d of nodes) {
+      if (degree.get(d) !== 1) continue;
+      const cd = coord.get(d)!;
+      let best = -1;
+      let bestDist = bridgeThresholdM;
+      for (const n of nodes) {
+        if (n === d || neighbours.get(d)?.has(n) || find(n) === find(d)) continue;
+        const dist = haversine(cd, coord.get(n)!);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = n;
+        }
+      }
+      if (best >= 0) union(d, best);
+    }
+    if (!didUnion) break;
+
+    const remapped: RawEdge[] = [];
+    for (const e of working) {
+      const from = find(e.from);
+      const to = find(e.to);
+      if (from === to && e.from !== e.to) continue; // distinct ends collapsed → drop
+      const coordinates = [...e.coordinates];
+      if (from !== e.from) coordinates[0] = coord.get(from)!;
+      if (to !== e.to) coordinates[coordinates.length - 1] = coord.get(to)!;
+      remapped.push({ ...e, from, to, coordinates });
+    }
+    working = contractChains(remapped);
+  }
+
   const finalEdges = working;
 
   // 5. Compact vertex indexing (first-seen order over the final edges).
