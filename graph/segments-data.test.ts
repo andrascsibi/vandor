@@ -77,9 +77,10 @@ describe("data/segments.json", () => {
     expect(used.size).toBe(g.vertices.length);
   });
 
-  it("carries a colour and marking onto every segment (all official)", () => {
+  it("carries a route marking onto every segment (all official)", () => {
+    // Colour is optional (colourless tanösvény / ST* routes exist); the marking
+    // is what makes the segment official, so it must always be present.
     for (const e of g.edges) {
-      expect(e.colours.length).toBeGreaterThanOrEqual(1);
       expect(e.markings.length).toBeGreaterThanOrEqual(1);
     }
   });

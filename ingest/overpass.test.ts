@@ -1,9 +1,15 @@
 import { describe, it, expect } from "vitest";
 import {
   BUDA_HILLS_BBOX,
+  SZELL_KALMAN_TER,
+  bboxAround,
   buildHikingRoutesQuery,
+  clipToRadius,
+  haversineM,
   osmToGeoJson,
+  type LonLat,
   type OverpassResponse,
+  type TrailFeatureCollection,
 } from "./overpass.ts";
 
 describe("buildHikingRoutesQuery", () => {
@@ -20,6 +26,42 @@ describe("buildHikingRoutesQuery", () => {
   it("embeds the bbox in south,west,north,east order", () => {
     const [s, w, n, e] = BUDA_HILLS_BBOX;
     expect(query).toContain(`${s},${w},${n},${e}`);
+  });
+});
+
+describe("bboxAround", () => {
+  it("returns a box that contains the circle and spans ~2·radius each way", () => {
+    const r = 20_000;
+    const [s, w, n, e] = bboxAround(SZELL_KALMAN_TER, r);
+    const [lon, lat] = SZELL_KALMAN_TER;
+    // Centred on the point.
+    expect((s + n) / 2).toBeCloseTo(lat, 6);
+    expect((w + e) / 2).toBeCloseTo(lon, 6);
+    // N/S edges are exactly the radius away; E/W edges at least the radius.
+    expect(haversineM([lon, n], SZELL_KALMAN_TER)).toBeCloseTo(r, -1);
+    expect(haversineM([e, lat], SZELL_KALMAN_TER)).toBeGreaterThanOrEqual(r - 1);
+  });
+});
+
+describe("clipToRadius", () => {
+  const center: LonLat = SZELL_KALMAN_TER;
+  const near: LonLat = [center[0] + 0.01, center[1]]; // ~750 m east
+  const far: LonLat = [center[0] + 1, center[1]]; // ~75 km east
+  const fc: TrailFeatureCollection = {
+    type: "FeatureCollection",
+    features: [
+      // inside the circle → kept
+      { type: "Feature", id: 1, geometry: { type: "LineString", coordinates: [near, center] }, properties: { osmid: 1, nodes: [1, 2], colours: ["blue"], markings: ["OKT"] } },
+      // fully outside → dropped
+      { type: "Feature", id: 2, geometry: { type: "LineString", coordinates: [far, [far[0] + 0.01, far[1]]] }, properties: { osmid: 2, nodes: [3, 4], colours: ["red"], markings: ["P"] } },
+      // one end inside, one far outside → kept (touches the range)
+      { type: "Feature", id: 3, geometry: { type: "LineString", coordinates: [near, far] }, properties: { osmid: 3, nodes: [5, 6], colours: ["green"], markings: ["Z"] } },
+    ],
+  };
+
+  it("keeps only ways with at least one coordinate inside the radius", () => {
+    const kept = clipToRadius(fc, center, 20_000);
+    expect(kept.features.map((f) => f.id).sort()).toEqual([1, 3]);
   });
 });
 

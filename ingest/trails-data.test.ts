@@ -1,12 +1,18 @@
 // Integration check over the committed ingest output (raw/trails.geojson).
-// Guards the T1 "product": every way is an official marked trail (jelzett
+// Guards the T1/T4a "product": every way is an official marked trail (jelzett
 // turistaút), annotated with colour + mark code, geometry well-formed, within
-// the Buda-hills bbox, carrying the node ids the graph builder depends on.
+// the ~20 km range of Széll Kálmán tér, carrying the node ids the graph builder
+// depends on.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BUDA_HILLS_BBOX, type TrailFeatureCollection } from "./overpass.ts";
+import {
+  RANGE_RADIUS_M,
+  SZELL_KALMAN_TER,
+  haversineM,
+  type TrailFeatureCollection,
+} from "./overpass.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dataPath = resolve(__dirname, "../raw/trails.geojson");
@@ -31,11 +37,18 @@ describe("raw/trails.geojson", () => {
     }
   });
 
-  it("only contains official trails: every way has a colour and a marking", () => {
+  it("only contains official trails: every way carries a route marking", () => {
+    // A marking (ref / mark code / route name) is always present — it's what
+    // makes a way "official". A waymark COLOUR is not guaranteed: tanösvény,
+    // the Mária-út and the urban sétaút (ST*) routes have no osmc:symbol band.
     for (const f of fc.features) {
-      expect(f.properties.colours.length).toBeGreaterThanOrEqual(1);
       expect(f.properties.markings.length).toBeGreaterThanOrEqual(1);
     }
+  });
+
+  it("gives the large majority of ways a waymark colour", () => {
+    const withColour = fc.features.filter((f) => f.properties.colours.length > 0);
+    expect(withColour.length / fc.features.length).toBeGreaterThan(0.8);
   });
 
   it("covers the four classic Hungarian mark colours", () => {
@@ -50,16 +63,12 @@ describe("raw/trails.geojson", () => {
     expect(markings.has("OKT")).toBe(true);
   });
 
-  it("geometry sits in the Buda hills (within a small boundary margin of the bbox)", () => {
-    const [s, w, n, e] = BUDA_HILLS_BBOX;
-    const margin = 0.01; // ways crossing the bbox edge keep nodes just outside
+  it("every way touches the ~20 km range of Széll Kálmán tér (clipToRadius held)", () => {
     for (const f of fc.features) {
-      for (const [lon, lat] of f.geometry.coordinates) {
-        expect(lon).toBeGreaterThanOrEqual(w - margin);
-        expect(lon).toBeLessThanOrEqual(e + margin);
-        expect(lat).toBeGreaterThanOrEqual(s - margin);
-        expect(lat).toBeLessThanOrEqual(n + margin);
-      }
+      const touches = f.geometry.coordinates.some(
+        (c) => haversineM(c, SZELL_KALMAN_TER) <= RANGE_RADIUS_M,
+      );
+      expect(touches).toBe(true);
     }
   });
 });

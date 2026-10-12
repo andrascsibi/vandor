@@ -1,7 +1,10 @@
 # Vándor — Architecture
 
 > Random hike suggester for the Budapest Sunday *kirándulás*. Single user (Andras).
-> Start location hardcoded: **Budapest, Széll Kálmán tér**. Range: ~1h (Greater Budapest).
+> Start location hardcoded: **Budapest, Széll Kálmán tér**. Range (T4a, MVP):
+> **~20 km crow-flies radius** of that point — a cheap stand-in for "≈30 min by
+> car". To revisit once the planner exists: the real constraint is "the trip's
+> *access point* is within ≈30 min drive", not the whole trail within 20 km.
 
 ## Core model: the trail graph
 
@@ -27,7 +30,11 @@ A **hike** is a *route*. The thing we pick at random is a **segment** (an edge).
   `natural=peak|spring|saddle`, `tourism=viewpoint`, `amenity=shelter|parking`,
   `highway=bus_stop`.
   - MVP ingest via **Overpass API** (select hiking relations → member ways clipped
-    to bbox, join colour/marking onto each way — no heavy toolchain).
+    to bbox, join colour/marking onto each way — no heavy toolchain). Range cut:
+    query the bbox that bounds the 20 km circle (Overpass `(around:)` on relations
+    forces a country-wide member scan and 500s on the public mirrors), then apply
+    the exact circular `clipToRadius` in code. Not every route carries a waymark
+    *colour* (tanösvény / Mária-út / urban ST* sétaút have none) — a *marking* is.
   - Scale path if we outgrow Overpass: Geofabrik Hungary `.osm.pbf` + osmium.
 - **Mapy = consumer, not source.** Used for: share deep-links (start/end points)
   and optionally outdoor tiles (API-key gated).

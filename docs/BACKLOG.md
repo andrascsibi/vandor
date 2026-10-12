@@ -25,9 +25,18 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
 
 ## Deepen the data
 
-- [ ] **T4 · Full region ingest + POI vertices.** Expand bbox to ~1h / Greater
-  Budapest; add named POIs as vertices (peaks, springs, saddles, viewpoints,
-  shelters, bus stops, parking). *Product:* richer, better random picks.
+- [x] **T4a · Full-region ingest + range filter.** Region = **~20 km radius of
+  Széll Kálmán tér** (a cheap MVP stand-in for "≈30 min by car"; revisit as a
+  real drive-time-to-access-point check once the planner lands). Fetched via a
+  bounding bbox (robust) then an exact circular `clipToRadius` cut in code —
+  Overpass `(around:)` on relations 500s on the public mirrors. *Product:*
+  **951 segments / 859 km** of marked trail (was 155 / 90), richer random picks.
+  Colour is now optional (tanösvény / Mária-út / ST* sétaút routes carry a mark
+  but no `osmc:symbol` colour → neutral fallback); a marking is still required.
+
+- [ ] **T4b · POI vertices.** Add named POIs as graph vertices (peaks, springs,
+  saddles, viewpoints, shelters, bus stops, parking), snapped onto segments with
+  the 50m rule. *Product:* segments gain meaningful named endpoints.
 
 - [ ] **T5 · Elevation enrichment.** Sample a DEM along each segment → store
   profile + gain/loss/max grade. *Product:* segments gain difficulty signal.
@@ -54,5 +63,13 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
 ## Later / nice-to-have
 
 - [ ] URL/hash state so a chosen segment is shareable/bookmarkable (kertiteto pattern).
-- [ ] "Already done" memory so random avoids recent repeats.
+- [ ] **Spaced-repetition memory** (Benedek István, *"járt utat járatlanért"*):
+  personal persistence of which segment was walked *when*; weight the picker by
+  recency so recently-done segments are deprioritised and the untrodden boosted.
+  One segment = one flashcard; goal = cover every marked road. (Supersedes the
+  old "avoid recent repeats".) Novelty should also feed the awesomeness score.
 - [ ] Kid-excitement signals (castles, ruins, lookout towers, caves, buffet huts).
+- [ ] Review the colourless **ST\* urban sétaút** routes (ST210/211/301/302):
+  decide whether these city-walk networks belong in a *hegyvidéki* hike picker,
+  or should be flagged/excluded. Optionally derive colour from single-letter
+  mark glyphs (K/P/Z/S → kék/piros/zöld/sárga) when `osmc:symbol` is absent.

@@ -8,8 +8,11 @@ import { writeFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  BUDA_HILLS_BBOX,
+  VANDOR_CENTER,
+  RANGE_RADIUS_M,
+  bboxAround,
   buildHikingRoutesQuery,
+  clipToRadius,
   osmToGeoJson,
   type OverpassResponse,
 } from "./overpass.ts";
@@ -51,16 +54,25 @@ async function queryOverpass(query: string): Promise<OverpassResponse> {
 }
 
 async function main(): Promise<void> {
-  const query = buildHikingRoutesQuery(BUDA_HILLS_BBOX);
-  console.log("Querying Overpass for Buda-hills official marked-trail ways…");
+  const radiusKm = RANGE_RADIUS_M / 1000;
+  const bbox = bboxAround(VANDOR_CENTER, RANGE_RADIUS_M);
+  const query = buildHikingRoutesQuery(bbox);
+  console.log(
+    `Querying Overpass for official marked-trail ways within ${radiusKm} km of Széll Kálmán tér…`,
+  );
   console.log(query);
 
   const json = await queryOverpass(query);
-  const fc = osmToGeoJson(json);
+  const bboxFc = osmToGeoJson(json);
+  // Rectangular fetch → exact circular range cut.
+  const fc = clipToRadius(bboxFc, VANDOR_CENTER, RANGE_RADIUS_M);
 
   await mkdir(dirname(OUT_PATH), { recursive: true });
   await writeFile(OUT_PATH, JSON.stringify(fc, null, 2) + "\n", "utf8");
 
+  console.log(
+    `  ${bboxFc.features.length} ways in bbox → ${fc.features.length} within ${radiusKm} km`,
+  );
   const colours = new Set(fc.features.flatMap((f) => f.properties.colours));
   console.log(`Wrote ${fc.features.length} marked-trail ways → ${OUT_PATH}`);
   console.log(`  colours present: ${[...colours].sort().join(", ")}`);
