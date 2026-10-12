@@ -87,7 +87,12 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
   - [x] **T7e · Mapy link for the whole túra.** `mapyTripUrl` routes through the
     ordered junctions; with a chosen start it goes park → túra → back (Mapy
     `waypoints=lon,lat;…`, max 15).
-  - [ ] *Later:* elevation profile of the túra; URL/hash so a túra is shareable.
+  - [x] **T7f · Shareable link + drive-there.** The túra (segment ids + chosen
+    parking) is persisted in the URL hash (`#t=…&p=lon,lat`, `replaceState`, loaded
+    on open / `hashchange`) → send the link to the family. Panel shows the chosen
+    parking's crow-flies distance from Széll Kálmán tér, and a Google Maps
+    drive-to-the-parking link sits under the Mapy link.
+  - [ ] *Later:* elevation profile of the túra.
 
 ## Automatic planner (later)
 
@@ -108,7 +113,7 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
 - [ ] **Elevation enrichment.** Sample a DEM along each segment → store profile +
   gain/loss/max grade. Segments gain a difficulty signal. (Was T5; demoted to
   nice-to-have — the segment explorer matters more right now.)
-- [ ] URL/hash state so a chosen segment is shareable/bookmarkable (kertiteto pattern).
+- [x] URL/hash state so a túra is shareable/bookmarkable (done in T7f).
 - [ ] **Spaced-repetition memory** (Benedek István, *"járt utat járatlanért"*):
   personal persistence of which segment was walked *when*; weight the picker by
   recency so recently-done segments are deprioritised and the untrodden boosted.

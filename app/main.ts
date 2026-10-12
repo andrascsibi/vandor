@@ -3,6 +3,8 @@ import "./style.css";
 import * as L from "leaflet";
 import graphUrl from "../data/segments.json?url";
 import type { Edge, SegmentGraph, Vertex } from "../graph/graph.ts";
+import { haversine } from "../graph/graph.ts";
+import { SZELL_KALMAN_TER } from "../ingest/overpass.ts";
 import {
   pickRandomSegment,
   formatDistance,
@@ -18,8 +20,13 @@ import {
   totalLengthM,
   orderedWaypoints,
   tourAccessPoints,
+  encodeTourHash,
+  parseTourHash,
   type AccessCandidate,
 } from "./tour.ts";
+
+// Crow-flies km from the chosen parking back to the hardcoded start.
+const SZELL: [number, number] = [SZELL_KALMAN_TER[0], SZELL_KALMAN_TER[1]];
 
 const BUDA_HILLS_CENTER: L.LatLngTuple = [47.54, 18.97];
 
@@ -41,6 +48,7 @@ const netRenderer = L.canvas({ pane: "network", padding: 0.5, tolerance: 6 });
 const rollBtn = document.getElementById("roll") as HTMLButtonElement;
 const infoEl = document.getElementById("info") as HTMLDivElement;
 const mapyEl = document.getElementById("mapy") as HTMLAnchorElement;
+const gmapsEl = document.getElementById("gmaps") as HTMLAnchorElement;
 
 function escapeHtml(s: string): string {
   const map: Record<string, string> = {
@@ -218,7 +226,10 @@ function renderPanel(cands: AccessCandidate[]): void {
   let accessLine = "";
   if (chosenAccess) {
     const name = chosenAccess.name ? escapeHtml(chosenAccess.name) : "parkoló";
-    accessLine = `<div class="access">🅿️ Indulás: ${name} · ${escapeHtml(formatDistance(chosenAccess.distM))}</div>`;
+    const szell = haversine([chosenAccess.lon, chosenAccess.lat], SZELL);
+    accessLine =
+      `<div class="access">🅿️ Indulás: ${name} · ${escapeHtml(formatDistance(chosenAccess.distM))}</div>` +
+      `<div class="access sub">🚗 Széll Kálmán tértől ${escapeHtml(formatDistance(szell))}</div>`;
   } else if (cands.length) {
     accessLine = `<div class="access">🅿️ Válassz indulási parkolót a térképen (${cands.length})</div>`;
   }
@@ -229,20 +240,33 @@ function renderPanel(cands: AccessCandidate[]): void {
     `<button class="clear" type="button">Ürítsd a túrát</button>`;
 }
 
-function updateMapy(): void {
+function updateLinks(): void {
   const wp = orderedWaypoints(tour, edgesById, vById);
   // With a chosen start, route park → túra → back to the car.
-  const points = chosenAccess
-    ? [[chosenAccess.lon, chosenAccess.lat] as [number, number], ...wp, [chosenAccess.lon, chosenAccess.lat] as [number, number]]
-    : wp;
-  const url = mapyTripUrl(points);
-  if (url) {
-    mapyEl.href = url;
+  const chosen = chosenAccess ? ([chosenAccess.lon, chosenAccess.lat] as [number, number]) : null;
+  const points = chosen ? [chosen, ...wp, chosen] : wp;
+  const mapyUrl = mapyTripUrl(points);
+  if (mapyUrl) {
+    mapyEl.href = mapyUrl;
     mapyEl.removeAttribute("aria-disabled");
   } else {
     mapyEl.removeAttribute("href");
     mapyEl.setAttribute("aria-disabled", "true");
   }
+  // Google Maps drive-to-the-parking (only once a start is chosen). lat,lon order.
+  if (chosenAccess) {
+    gmapsEl.href = `https://www.google.com/maps/dir/?api=1&destination=${chosenAccess.lat},${chosenAccess.lon}&travelmode=driving`;
+    gmapsEl.removeAttribute("aria-disabled");
+  } else {
+    gmapsEl.removeAttribute("href");
+    gmapsEl.setAttribute("aria-disabled", "true");
+  }
+}
+
+// Persist the túra in the URL hash so it's shareable (no history spam).
+function syncHash(): void {
+  const body = encodeTourHash(tour, chosenAccess);
+  history.replaceState(null, "", body ? `#${body}` : location.pathname + location.search);
 }
 
 function rebuild(): void {
@@ -255,7 +279,8 @@ function rebuild(): void {
   drawNetwork();
   drawAccess(cands);
   renderPanel(cands);
-  updateMapy();
+  updateLinks();
+  syncHash();
 }
 
 // Panel interactions: remove one segment, or clear the whole túra.
@@ -289,9 +314,31 @@ async function init(): Promise<void> {
     map.fitBounds(bounds, { padding: [70, 70], maxZoom: 16 });
     rebuild();
   };
+
+  // Restore a shared túra from the URL hash; returns false if there's nothing valid.
+  const loadFromHash = (): boolean => {
+    const { ids, access } = parseTourHash(location.hash);
+    const valid = ids.filter((id) => edgesById.has(id));
+    if (valid.length === 0) return false;
+    tour = valid;
+    chosenAccess = null;
+    if (access) {
+      const cands = tourAccessPoints(tour, edgesById, vById);
+      chosenAccess =
+        cands.find((c) => Math.abs(c.lon - access[0]) < 1e-6 && Math.abs(c.lat - access[1]) < 1e-6) ?? null;
+    }
+    const bounds = L.latLngBounds(tour.flatMap((id) => latLngsOf(edgesById.get(id)!)));
+    if (chosenAccess) bounds.extend(toLatLng([chosenAccess.lon, chosenAccess.lat]));
+    map.fitBounds(bounds, { padding: [70, 70], maxZoom: 16 });
+    rebuild();
+    return true;
+  };
+
   rollBtn.addEventListener("click", roll);
   map.on("moveend", drawNetwork); // keep the base network in sync on pan/zoom
-  roll();
+  // A pasted/edited link navigates the túra; our own writes use replaceState.
+  window.addEventListener("hashchange", loadFromHash);
+  if (!loadFromHash()) roll(); // open a shared túra, else land on a random one
 }
 
 void init();

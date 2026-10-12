@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toggleSegment, totalLengthM, orderedWaypoints, tourAccessPoints } from "./tour.ts";
+import { toggleSegment, totalLengthM, orderedWaypoints, tourAccessPoints, encodeTourHash, parseTourHash } from "./tour.ts";
 import type { Edge, Vertex } from "../graph/graph.ts";
 
 const v = (id: number, lon: number, lat: number): Vertex => ({ id, osmId: id, lon, lat });
@@ -84,5 +84,24 @@ describe("tourAccessPoints", () => {
 
   it("returns nothing for an empty túra", () => {
     expect(tourAccessPoints([], byId, vs)).toEqual([]);
+  });
+});
+
+describe("encodeTourHash / parseTourHash", () => {
+  it("encodes ids and an optional chosen parking", () => {
+    expect(encodeTourHash([1, 2, 3], null)).toBe("t=1,2,3");
+    expect(encodeTourHash([1, 2, 3], { lon: 19.02, lat: 47.5 })).toBe("t=1,2,3&p=19.02,47.5");
+    expect(encodeTourHash([], null)).toBe("");
+  });
+
+  it("round-trips through parse", () => {
+    const h = encodeTourHash([58, 65, 348], { lon: 18.991, lat: 47.56 });
+    expect(parseTourHash(`#${h}`)).toEqual({ ids: [58, 65, 348], access: [18.991, 47.56] });
+  });
+
+  it("parses a hash without a chosen parking, and tolerates junk", () => {
+    expect(parseTourHash("#t=1,2,3")).toEqual({ ids: [1, 2, 3], access: null });
+    expect(parseTourHash("")).toEqual({ ids: [], access: null });
+    expect(parseTourHash("#t=1,x,-5,3").ids).toEqual([1, 3]);
   });
 });
