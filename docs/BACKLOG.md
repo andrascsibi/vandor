@@ -34,9 +34,13 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
   Colour is now optional (tanösvény / Mária-út / ST* sétaút routes carry a mark
   but no `osmc:symbol` colour → neutral fallback); a marking is still required.
 
-- [ ] **T4b · POI vertices.** Add named POIs as graph vertices (peaks, springs,
-  saddles, viewpoints, shelters, bus stops, parking), snapped onto segments with
-  the 50m rule. *Product:* segments gain meaningful named endpoints.
+- [x] **T4b · POI vertices.** Ingest POIs (`npm run pois` → `raw/pois.geojson`:
+  peaks/saddles/viewpoints/springs/shelters + access POIs parking/bus_stop) and
+  attach the *named* ones onto the graph (`graph/attach-pois.ts`): a POI within
+  50 m of an endpoint names that vertex; a mid-trail POI splits the edge into a
+  new named degree-2 vertex (60 m snap, 50 m fragment guard, kind-priority on
+  conflict). *Product:* **134 named vertices** (103 from splits) → the picker
+  shows "⛰️ Határ-nyereg → 🔭 Oroszlán-szikla". Access POIs wait for the planner.
 
 - [ ] **T5 · Elevation enrichment.** Sample a DEM along each segment → store
   profile + gain/loss/max grade. *Product:* segments gain difficulty signal.
@@ -69,6 +73,9 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
   One segment = one flashcard; goal = cover every marked road. (Supersedes the
   old "avoid recent repeats".) Novelty should also feed the awesomeness score.
 - [ ] Kid-excitement signals (castles, ruins, lookout towers, caves, buffet huts).
+- [ ] Surface off-trail named POIs as *context* (254 named peaks/viewpoints sit
+  >60 m from any marked trail, e.g. Tök-hegy, Csúcs-hegy): show the nearest named
+  feature even when it isn't a segment endpoint, so a pick near a famous peak says so.
 - [ ] Review the colourless **ST\* urban sétaút** routes (ST210/211/301/302):
   decide whether these city-walk networks belong in a *hegyvidéki* hike picker,
   or should be flagged/excluded. Optionally derive colour from single-letter

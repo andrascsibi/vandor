@@ -22,10 +22,16 @@ export const MERGE_THRESHOLD_M = 50;
 export interface Vertex {
   /** Compact 0-based index (the id edges reference). */
   id: number;
-  /** OSM node id of the vertex (cluster representative after merging). */
+  /** OSM node id of the vertex (cluster representative; <0 for POI-split vertices). */
   osmId: number;
   lon: number;
   lat: number;
+  /** Name of the POI attached here (T4b), e.g. "János-hegy". */
+  name?: string;
+  /** POI kind attached here, e.g. "peak" | "viewpoint" | "spring" (T4b). */
+  poiKind?: string;
+  /** Elevation in metres, if the attached POI carries one. */
+  ele?: number;
 }
 
 export interface Edge {

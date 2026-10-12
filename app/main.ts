@@ -2,13 +2,15 @@ import "leaflet/dist/leaflet.css";
 import "./style.css";
 import * as L from "leaflet";
 import graphUrl from "../data/segments.json?url";
-import type { Edge, SegmentGraph } from "../graph/graph.ts";
+import type { Edge, SegmentGraph, Vertex } from "../graph/graph.ts";
 import {
   pickRandomSegment,
   shareEndpoints,
   mapyRouteUrl,
   formatDistance,
   trailColour,
+  poiLabel,
+  endpointsText,
 } from "./trip.ts";
 
 const BUDA_HILLS_CENTER: L.LatLngTuple = [47.54, 18.97];
@@ -41,7 +43,7 @@ const toLatLng = ([lon, lat]: [number, number]): L.LatLngTuple => [lat, lon];
 
 let highlight: L.LayerGroup | null = null;
 
-function showSegment(edge: Edge): void {
+function showSegment(edge: Edge, vertices: Vertex[]): void {
   highlight?.remove();
 
   const latlngs = edge.coordinates.map(toLatLng);
@@ -49,24 +51,33 @@ function showSegment(edge: Edge): void {
   // White casing under the coloured line so every waymark colour reads on topo.
   const casing = L.polyline(latlngs, { color: "#fff", weight: 8, opacity: 0.95 });
   const line = L.polyline(latlngs, { color: colour, weight: 4.5, opacity: 1 });
+  const fromV = vertices[edge.from];
+  const toV = vertices[edge.to];
   const start = edge.coordinates[0];
   const end = edge.coordinates[edge.coordinates.length - 1];
-  const dot = (p: [number, number]) =>
-    L.circleMarker(toLatLng(p), {
+  const dot = (p: [number, number], v: Vertex) => {
+    const m = L.circleMarker(toLatLng(p), {
       radius: 6,
       color: "#fff",
       weight: 2,
       fillColor: "#2b2620",
       fillOpacity: 1,
     });
-  highlight = L.layerGroup([casing, line, dot(start), dot(end)]).addTo(map);
+    const label = poiLabel(v);
+    if (label) m.bindTooltip(label, { direction: "top", offset: [0, -6] });
+    return m;
+  };
+  highlight = L.layerGroup([casing, line, dot(start, fromV), dot(end, toV)]).addTo(map);
   map.fitBounds(line.getBounds(), { padding: [70, 70], maxZoom: 16 });
 
   const marks = edge.markings.length ? escapeHtml(edge.markings.join(" · ")) : "jelzett szakasz";
   const swatch = `<span class="swatch" style="background:${colour}"></span>`;
+  const ends = endpointsText(fromV, toV);
+  const endsLine = ends ? `<div class="ends">${escapeHtml(ends)}</div>` : "";
   const wayName = edge.name ? `<div class="wayname">${escapeHtml(edge.name)}</div>` : "";
   infoEl.innerHTML =
     `<div class="mark">${swatch}${marks}</div>` +
+    endsLine +
     `<div class="len">${formatDistance(edge.lengthM)}</div>` +
     wayName;
 
@@ -77,7 +88,7 @@ function showSegment(edge: Edge): void {
 
 async function init(): Promise<void> {
   const graph = (await fetch(graphUrl).then((r) => r.json())) as SegmentGraph;
-  const roll = () => showSegment(pickRandomSegment(graph.edges));
+  const roll = () => showSegment(pickRandomSegment(graph.edges), graph.vertices);
   rollBtn.addEventListener("click", roll);
   roll(); // land on a random segment immediately
 }

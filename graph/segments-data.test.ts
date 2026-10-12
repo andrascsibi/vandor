@@ -49,9 +49,10 @@ describe("data/segments.json", () => {
     expect(offenders).toHaveLength(0);
   });
 
-  it("is fully contracted: no pure degree-2 pass-through vertex remains", () => {
-    // Count non-self-loop edge ends per vertex. A vertex with exactly two of
-    // those and no self-loop would be a pass-through that should have merged.
+  it("has no UNNAMED pure degree-2 pass-through vertex (only POI waypoints)", () => {
+    // Count non-self-loop edge ends per vertex. A degree-2 vertex is allowed
+    // only when it carries a POI name (a T4b waypoint split, e.g. a peak the
+    // trail passes through); any unnamed one is an un-contracted pass-through.
     const straightDeg = new Array(g.vertices.length).fill(0);
     const hasLoop = new Array(g.vertices.length).fill(false);
     for (const e of g.edges) {
@@ -63,9 +64,16 @@ describe("data/segments.json", () => {
       }
     }
     const passThrough = g.vertices.filter(
-      (v) => straightDeg[v.id] === 2 && !hasLoop[v.id],
+      (v) => straightDeg[v.id] === 2 && !hasLoop[v.id] && !v.name,
     );
     expect(passThrough).toHaveLength(0);
+  });
+
+  it("names a meaningful number of vertices from POIs (peaks, springs, …)", () => {
+    const named = g.vertices.filter((v) => v.name);
+    expect(named.length).toBeGreaterThan(50);
+    // a famous Buda-hills peak should be present
+    expect(g.vertices.some((v) => v.poiKind === "peak")).toBe(true);
   });
 
   it("has no orphan vertices (every vertex is used by some edge)", () => {

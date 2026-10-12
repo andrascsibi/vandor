@@ -31,6 +31,35 @@ export function mapyRouteUrl(from: Point, to: Point): string {
   );
 }
 
+// Named-endpoint labels (T4b). A segment endpoint can carry a POI.
+const KIND_ICON: Record<string, string> = {
+  peak: "⛰️",
+  viewpoint: "🔭",
+  spring: "💧",
+  shelter: "🛖",
+  // saddle has no clear emoji → shown as a plain name.
+};
+
+export interface EndpointInfo {
+  name?: string;
+  poiKind?: string;
+}
+
+/** "⛰️ Hármashatár-hegy" for a named endpoint, or null if it has no POI. */
+export function poiLabel(v: EndpointInfo): string | null {
+  if (!v.name) return null;
+  const icon = v.poiKind ? KIND_ICON[v.poiKind] : undefined;
+  return icon ? `${icon} ${v.name}` : v.name;
+}
+
+/** "⛰️ A → 💧 B" when either endpoint is named; null when neither is. */
+export function endpointsText(from: EndpointInfo, to: EndpointInfo): string | null {
+  const a = poiLabel(from);
+  const b = poiLabel(to);
+  if (!a && !b) return null;
+  return `${a ?? "·"} → ${b ?? "·"}`;
+}
+
 /** Human distance, Hungarian decimal comma: 150 → "150 m", 1234 → "1,2 km". */
 export function formatDistance(meters: number): string {
   if (meters < 1000) return `${Math.round(meters)} m`;

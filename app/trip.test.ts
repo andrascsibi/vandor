@@ -5,6 +5,8 @@ import {
   mapyRouteUrl,
   formatDistance,
   trailColour,
+  poiLabel,
+  endpointsText,
 } from "./trip.ts";
 import type { Edge } from "../graph/graph.ts";
 
@@ -107,5 +109,28 @@ describe("trailColour", () => {
   it("falls back for unknown or empty colours", () => {
     expect(trailColour(["pink"])).toBe("#e8590c");
     expect(trailColour([])).toBe("#e8590c");
+  });
+});
+
+describe("poiLabel / endpointsText", () => {
+  it("prefixes a kind icon to a named endpoint", () => {
+    expect(poiLabel({ name: "Hármashatár-hegy", poiKind: "peak" })).toBe("⛰️ Hármashatár-hegy");
+    expect(poiLabel({ name: "Ibolya-forrás", poiKind: "spring" })).toBe("💧 Ibolya-forrás");
+  });
+
+  it("returns the bare name for an unknown kind and null when unnamed", () => {
+    expect(poiLabel({ name: "Valami", poiKind: "weird" })).toBe("Valami");
+    expect(poiLabel({})).toBeNull();
+  });
+
+  it("joins two endpoints, using a dot for the unnamed side", () => {
+    expect(
+      endpointsText({ name: "Hárs-hegy", poiKind: "peak" }, { name: "János-forrás", poiKind: "spring" }),
+    ).toBe("⛰️ Hárs-hegy → 💧 János-forrás");
+    expect(endpointsText({ name: "Hárs-hegy", poiKind: "peak" }, {})).toBe("⛰️ Hárs-hegy → ·");
+  });
+
+  it("returns null when neither endpoint is named", () => {
+    expect(endpointsText({}, {})).toBeNull();
   });
 });

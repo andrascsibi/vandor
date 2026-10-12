@@ -26,9 +26,13 @@ A **hike** is a *route*. The thing we pick at random is a **segment** (an edge).
   members of `route=hiking` relations, which carry the coloured waymark
   (`osmc:symbol`, e.g. `blue:white:blue_circle`) and mark code (`K↺`, `OKT`). This
   deliberately excludes unmarked park paths etc. — in HU only marked routes count
-  as hiking (unless freestyling). POIs come later (T4):
+  as hiking (unless freestyling). **POIs (T4b, done):**
   `natural=peak|spring|saddle`, `tourism=viewpoint`, `amenity=shelter|parking`,
-  `highway=bus_stop`.
+  `highway=bus_stop` → `raw/pois.geojson` (`npm run pois`). The *named* subset
+  (peak/saddle/viewpoint/spring/shelter) is attached to the graph as segment
+  endpoints (`graph/attach-pois.ts`): name a vertex within 50 m, else split the
+  edge at a mid-trail POI (a new named degree-2 vertex). Access POIs (parking,
+  bus stop) are kept for the planner (T6).
   - MVP ingest via **Overpass API** (select hiking relations → member ways clipped
     to bbox, join colour/marking onto each way — no heavy toolchain). Range cut:
     query the bbox that bounds the 20 km circle (Overpass `(around:)` on relations

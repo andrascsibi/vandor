@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "ingest": "node ingest/fetch-trails.ts",
+    "pois": "node ingest/fetch-pois.ts",
     "graph": "node graph/build-segments.ts",
     "test": "vitest run",
     "test:watch": "vitest"
