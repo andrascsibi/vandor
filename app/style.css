@@ -245,6 +245,12 @@ body {
   box-shadow: 0 0 0 2px #fff, 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
+/* The chosen start parking (T7d) reads green, like the túra's go-ahead. */
+.pmark.chosen {
+  background: #2f9e44;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(47, 158, 68, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
 /* Leaflet attribution sits better with a touch of transparency. */
 .leaflet-container {
   font-family: inherit;

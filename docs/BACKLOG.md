@@ -70,24 +70,23 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
 
 ## Manual trip building (current focus — aid the hand, don't route)
 
-- [ ] **T7 · Manual trip builder ("túra").** A *túra* is an (implicitly ordered)
-  collection of segments you assemble by clicking. Build a nice loop by hand,
-  keep every access point visible, and let the turista judge the approach —
-  rather than trusting a router over unmarked/blocked paths. Sub-tasks:
-  - [ ] **T7a · Túra model (pure, tested).** Ordered segment set: toggle
-    add/remove, total distance, and order into a walking sequence (chain segments
-    by shared endpoints) for the Mapy link + the túra's open ends.
-  - [ ] **T7b · Click to add/remove + render.** Clicking a segment toggles its
-    membership; all túra segments drawn highlighted, the rest stay the clickable
-    base network. "Vándor dob" starts a fresh túra from a random seed segment.
-  - [ ] **T7c · Túra summary panel.** List of segments (mark / named endpoints /
-    length), count, total distance (elevation profile later), a clear button.
-  - [ ] **T7d · Access-point choice.** Show the candidate parking for the túra's
-    endpoints; click one to choose it as the start (distinct marker + dashed line
-    to the nearest end); hide the others until it's unselected.
-  - [ ] **T7e · Mapy link for the whole túra.** Route through the ordered segments
-    incl. the chosen access point (park → loop → back). Confirm Mapy's waypoint
-    format.
+- [x] **T7 · Manual trip builder ("túra").** A *túra* is an (implicitly ordered)
+  collection of segments you assemble by clicking. Build a loop by hand, keep the
+  access options visible, let the turista judge the approach. All sub-tasks done:
+  - [x] **T7a · Túra model (pure, tested).** `app/tour.ts`: toggle add/remove,
+    total distance, `orderedWaypoints` (greedy chain by shared endpoints),
+    `tourAccessPoints` (deduped candidate parking, closest approach per lot).
+  - [x] **T7b · Click to add/remove + render.** Click a segment to toggle it; túra
+    segments highlighted (click to remove), the rest stay the clickable base
+    network. "Vándor dob" seeds a fresh túra from a random segment.
+  - [x] **T7c · Túra summary panel.** Per-segment rows (swatch / marks / named
+    endpoints / length / ✕), count, total distance, clear button.
+  - [x] **T7d · Access-point choice.** Candidate parking (blue P) for the túra's
+    ends; click one → it's the green chosen start with a dashed approach line, the
+    others hide; click it again to release. Panel shows "🅿️ Indulás: … · dist".
+  - [x] **T7e · Mapy link for the whole túra.** `mapyTripUrl` routes through the
+    ordered junctions; with a chosen start it goes park → túra → back (Mapy
+    `waypoints=lon,lat;…`, max 15).
   - [ ] *Later:* elevation profile of the túra; URL/hash so a túra is shareable.
 
 ## Automatic planner (later)

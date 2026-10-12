@@ -20,6 +20,50 @@ export function totalLengthM(ids: number[], byId: Map<number, Edge>): number {
   return sum;
 }
 
+/** A candidate parking for the túra (T7d): a lot + where to walk in from. */
+export interface AccessCandidate {
+  lon: number;
+  lat: number;
+  name?: string;
+  /** Crow-flies distance from the nearest túra endpoint, metres. */
+  distM: number;
+  /** That nearest túra endpoint (where the dashed approach line starts). */
+  fromLon: number;
+  fromLat: number;
+}
+
+/**
+ * The distinct candidate parking for a túra (T7d): each túra endpoint's nearest
+ * usable parking, deduped by lot — keeping, for each lot, the closest túra
+ * endpoint (its `from*` is where the approach line is drawn from). These are the
+ * options the user picks a start from.
+ */
+export function tourAccessPoints(
+  ids: number[],
+  byId: Map<number, Edge>,
+  vById: Map<number, Vertex>,
+): AccessCandidate[] {
+  const seenVertex = new Set<number>();
+  const byLot = new Map<string, AccessCandidate>();
+  for (const id of ids) {
+    const e = byId.get(id);
+    if (!e) continue;
+    for (const vid of [e.from, e.to]) {
+      if (seenVertex.has(vid)) continue;
+      seenVertex.add(vid);
+      const v = vById.get(vid);
+      if (!v?.access) continue;
+      const a = v.access;
+      const key = `${a.lon},${a.lat}`;
+      const prev = byLot.get(key);
+      if (!prev || a.distM < prev.distM) {
+        byLot.set(key, { lon: a.lon, lat: a.lat, name: a.name, distM: a.distM, fromLon: v.lon, fromLat: v.lat });
+      }
+    }
+  }
+  return [...byLot.values()];
+}
+
 interface Link {
   edgeId: number;
   other: number;

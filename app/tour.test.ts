@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toggleSegment, totalLengthM, orderedWaypoints } from "./tour.ts";
+import { toggleSegment, totalLengthM, orderedWaypoints, tourAccessPoints } from "./tour.ts";
 import type { Edge, Vertex } from "../graph/graph.ts";
 
 const v = (id: number, lon: number, lat: number): Vertex => ({ id, osmId: id, lon, lat });
@@ -61,5 +61,28 @@ describe("orderedWaypoints", () => {
     const wp = orderedWaypoints([1, 2], byId, vs);
     expect(wp).toHaveLength(4);
     expect(wp).toContainEqual([19.3, 47.0]);
+  });
+});
+
+describe("tourAccessPoints", () => {
+  const vs = new Map(
+    [
+      { id: 0, osmId: 0, lon: 19.0, lat: 47.0, access: { lon: 18.99, lat: 47.0, name: "A", distM: 100 } },
+      { id: 1, osmId: 1, lon: 19.1, lat: 47.0, access: { lon: 18.99, lat: 47.0, name: "A", distM: 300 } }, // same lot A, farther
+      { id: 2, osmId: 2, lon: 19.2, lat: 47.0, access: { lon: 19.25, lat: 47.0, name: "B", distM: 150 } },
+    ].map((v) => [v.id, v as Vertex]),
+  );
+  const byId = new Map([e(1, 0, 1, 1), e(2, 1, 2, 1)].map((x) => [x.id, x]));
+
+  it("dedupes lots across túra endpoints, keeping the closest approach", () => {
+    const cands = tourAccessPoints([1, 2], byId, vs);
+    expect(cands).toHaveLength(2); // lots A and B
+    const a = cands.find((c) => c.name === "A")!;
+    expect(a.distM).toBe(100); // the closer of A's two endpoints
+    expect(a.fromLon).toBe(19.0); // approached from vertex 0
+  });
+
+  it("returns nothing for an empty túra", () => {
+    expect(tourAccessPoints([], byId, vs)).toEqual([]);
   });
 });

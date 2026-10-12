@@ -13,7 +13,13 @@ import {
   segmentsInBounds,
   type GeoBounds,
 } from "./trip.ts";
-import { toggleSegment, totalLengthM, orderedWaypoints } from "./tour.ts";
+import {
+  toggleSegment,
+  totalLengthM,
+  orderedWaypoints,
+  tourAccessPoints,
+  type AccessCandidate,
+} from "./tour.ts";
 
 const BUDA_HILLS_CENTER: L.LatLngTuple = [47.54, 18.97];
 
@@ -56,7 +62,9 @@ const BASE_OPACITY = 0.85;
 // A túra (T7) is an ordered list of edge ids the user assembles by clicking.
 let network: L.LayerGroup | null = null; // base (non-túra) segments, canvas pane
 let tourLayer: L.LayerGroup | null = null; // the túra's highlighted segments + dots
+let accessLayer: L.LayerGroup | null = null; // candidate / chosen parking markers
 let tour: number[] = [];
+let chosenAccess: AccessCandidate | null = null; // the picked start parking
 let graphRef: SegmentGraph | null = null;
 const edgesById = new Map<number, Edge>();
 const vById = new Map<number, Vertex>();
@@ -136,7 +144,56 @@ function drawTour(): void {
   tourLayer = L.layerGroup(layers).addTo(map);
 }
 
-function renderPanel(): void {
+// Candidate parking for the túra (T7d): all distinct lots when none is chosen;
+// just the chosen one (green, with a dashed approach line) once picked. Click a
+// candidate to choose it as the start; click the chosen one to release it.
+function drawAccess(cands: AccessCandidate[]): void {
+  accessLayer?.remove();
+  const layers: L.Layer[] = [];
+  const marker = (c: AccessCandidate, chosen: boolean) => {
+    const m = L.marker(toLatLng([c.lon, c.lat]), {
+      icon: L.divIcon({
+        className: "pmark-wrap",
+        html: `<div class="pmark${chosen ? " chosen" : ""}">P</div>`,
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+      }),
+    });
+    const name = c.name ? escapeHtml(c.name) : "parkoló";
+    m.bindTooltip(`🅿️ ${name} · ${formatDistance(c.distM)}`, { direction: "top", offset: [0, -10] });
+    return m;
+  };
+  if (chosenAccess) {
+    const c = chosenAccess;
+    layers.push(
+      L.polyline([toLatLng([c.fromLon, c.fromLat]), toLatLng([c.lon, c.lat])], {
+        color: "#2f9e44",
+        weight: 2.5,
+        opacity: 0.9,
+        dashArray: "2 7",
+        interactive: false,
+      }),
+    );
+    const m = marker(c, true);
+    m.on("click", () => {
+      chosenAccess = null;
+      rebuild();
+    });
+    layers.push(m);
+  } else {
+    for (const c of cands) {
+      const m = marker(c, false);
+      m.on("click", () => {
+        chosenAccess = c;
+        rebuild();
+      });
+      layers.push(m);
+    }
+  }
+  accessLayer = L.layerGroup(layers).addTo(map);
+}
+
+function renderPanel(cands: AccessCandidate[]): void {
   if (tour.length === 0) {
     infoEl.innerHTML =
       `<div class="hint">Dobj egyet, vagy kattints a térképen egy szakaszra — így építed fel a túrát.</div>`;
@@ -158,14 +215,27 @@ function renderPanel(): void {
       );
     })
     .join("");
+  let accessLine = "";
+  if (chosenAccess) {
+    const name = chosenAccess.name ? escapeHtml(chosenAccess.name) : "parkoló";
+    accessLine = `<div class="access">🅿️ Indulás: ${name} · ${escapeHtml(formatDistance(chosenAccess.distM))}</div>`;
+  } else if (cands.length) {
+    accessLine = `<div class="access">🅿️ Válassz indulási parkolót a térképen (${cands.length})</div>`;
+  }
   infoEl.innerHTML =
     `<div class="tour-head"><strong>Túra</strong> · ${tour.length} szakasz · <span class="tour-total">${formatDistance(total)}</span></div>` +
     `<ul class="seg-list">${rows}</ul>` +
+    accessLine +
     `<button class="clear" type="button">Ürítsd a túrát</button>`;
 }
 
 function updateMapy(): void {
-  const url = mapyTripUrl(orderedWaypoints(tour, edgesById, vById));
+  const wp = orderedWaypoints(tour, edgesById, vById);
+  // With a chosen start, route park → túra → back to the car.
+  const points = chosenAccess
+    ? [[chosenAccess.lon, chosenAccess.lat] as [number, number], ...wp, [chosenAccess.lon, chosenAccess.lat] as [number, number]]
+    : wp;
+  const url = mapyTripUrl(points);
   if (url) {
     mapyEl.href = url;
     mapyEl.removeAttribute("aria-disabled");
@@ -176,9 +246,15 @@ function updateMapy(): void {
 }
 
 function rebuild(): void {
+  const cands = tourAccessPoints(tour, edgesById, vById);
+  // Drop the chosen start if the túra changed so it's no longer a candidate.
+  if (chosenAccess && !cands.some((c) => c.lon === chosenAccess!.lon && c.lat === chosenAccess!.lat)) {
+    chosenAccess = null;
+  }
   drawTour();
   drawNetwork();
-  renderPanel();
+  drawAccess(cands);
+  renderPanel(cands);
   updateMapy();
 }
 
@@ -192,6 +268,7 @@ infoEl.addEventListener("click", (ev) => {
   }
   if (target.closest(".clear")) {
     tour = [];
+    chosenAccess = null;
     rebuild();
   }
 });
@@ -206,7 +283,10 @@ async function init(): Promise<void> {
   const roll = () => {
     const seed = pickRandomSegment(graph.edges);
     tour = [seed.id];
-    map.fitBounds(L.latLngBounds(latLngsOf(seed)), { padding: [70, 70], maxZoom: 16 });
+    chosenAccess = null;
+    const bounds = L.latLngBounds(latLngsOf(seed));
+    for (const c of tourAccessPoints(tour, edgesById, vById)) bounds.extend(toLatLng([c.lon, c.lat]));
+    map.fitBounds(bounds, { padding: [70, 70], maxZoom: 16 });
     rebuild();
   };
   rollBtn.addEventListener("click", roll);
