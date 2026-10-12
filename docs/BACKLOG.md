@@ -94,6 +94,18 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
     drive-to-the-parking link sits under the Mapy link.
   - [ ] *Later:* elevation profile of the túra.
 
+> **🐞 START HERE NEXT SESSION — Mapy waypoint order.** When a start parking is
+> chosen the route is built as `[chosen, ...orderedWaypoints, chosen]`, but
+> `orderedWaypoints` (in `app/tour.ts`) begins its greedy chain at an arbitrary
+> open end (degree-1 vertex) / the first edge's `from` — **not** the túra end
+> nearest the chosen access. So Mapy jumps park → middle/far end → back-and-forth
+> → car. Fix: start the chain at the túra endpoint closest to the chosen access so
+> it flows park → near end → through the túra → far end → back. Minimal fix:
+> reverse `wp` when `haversine(wp[0], access) > haversine(wp.at(-1), access)`.
+> Cleaner: let `orderedWaypoints` take a preferred start point (it already picks a
+> `start` vertex — bias it toward the access). Loops: both ends coincide, so the
+> reverse check is a no-op; still fine. Add a unit test for the ordering.
+
 ## Automatic planner (later)
 
 - [ ] **T8 · Planner (transit-aware).** Allow start ≠ end when reachable by
