@@ -30,7 +30,9 @@ import {
   buildRouteGraph,
   deadEndVertices,
   tourComponents,
+  tourOpenEnds,
   fillTourGaps,
+  closeTourLoop,
   type RouteGraph,
 } from "./router.ts";
 
@@ -266,11 +268,20 @@ function renderPanel(cands: AccessCandidate[]): void {
       ? `<div class="warn">⚠️ Nem összefüggő túra · ${pieces} külön rész` +
         `<button class="fill-gap" type="button">Töltsd ki a hézagot ↝</button></div>`
       : "";
+  // Close the loop: offer it for a continuous túra that has two or more live
+  // open ends (dead-end spurs don't count — they're out-and-back). Routes them
+  // back together over the rest of the net so you walk a loop, not a there-back.
+  const liveEnds = tourOpenEnds(tour, edgesById).filter((v) => !allDeadEnds.has(v));
+  const loopBtn =
+    pieces === 1 && liveEnds.length >= 2
+      ? `<button class="close-loop" type="button">🔄 Zárd be a kört</button>`
+      : "";
   infoEl.innerHTML =
     `<div class="tour-head"><strong>Túra</strong> · ${tour.length} szakasz · <span class="tour-total">${formatDistance(walking)}</span></div>` +
     odaVissza +
     warnLine +
     `<ul class="seg-list">${rows}</ul>` +
+    loopBtn +
     accessLine +
     `<button class="clear" type="button">Ürítsd a túrát</button>`;
 }
@@ -344,6 +355,17 @@ infoEl.addEventListener("click", (ev) => {
   if (target.closest(".fill-gap")) {
     if (routeGraph) {
       const added = fillTourGaps(tour, edgesById, routeGraph);
+      if (added.length) {
+        tour = [...tour, ...added];
+        rebuild();
+        fitTour();
+      }
+    }
+    return;
+  }
+  if (target.closest(".close-loop")) {
+    if (routeGraph) {
+      const added = closeTourLoop(tour, edgesById, routeGraph, allDeadEnds);
       if (added.length) {
         tour = [...tour, ...added];
         rebuild();
