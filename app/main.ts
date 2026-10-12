@@ -11,6 +11,7 @@ import {
   trailColour,
   poiLabel,
   endpointsText,
+  accessSummary,
   segmentsInBounds,
   type GeoBounds,
 } from "./trip.ts";
@@ -123,18 +124,57 @@ function selectSegment(edge: Edge, vertices: Vertex[], fit: boolean): void {
     if (label) m.bindTooltip(label, { direction: "top", offset: [0, -6] });
     return m;
   };
-  highlight = L.layerGroup([casing, line, dot(start, fromV), dot(end, toV)]).addTo(map);
-  if (fit) map.fitBounds(line.getBounds(), { padding: [70, 70], maxZoom: 16 });
+
+  // Nearest car access (T6): a dashed crow-flies line from each end to its
+  // parking, and a 🅿️ marker (deduped when both ends share one lot). The gap is
+  // the turista's to bridge — we only point at the car.
+  const accessLayers: L.Layer[] = [];
+  const drawnAccess = new Set<string>();
+  for (const v of [fromV, toV]) {
+    const a = v.access;
+    if (!a) continue;
+    const accLL = toLatLng([a.lon, a.lat]);
+    accessLayers.push(
+      L.polyline([toLatLng([v.lon, v.lat]), accLL], {
+        color: "#333",
+        weight: 2,
+        opacity: 0.85,
+        dashArray: "2 7",
+        interactive: false,
+      }),
+    );
+    const key = `${a.lon},${a.lat}`;
+    if (!drawnAccess.has(key)) {
+      drawnAccess.add(key);
+      const m = L.marker(accLL, {
+        icon: L.divIcon({ className: "pmark-wrap", html: '<div class="pmark">P</div>', iconSize: [22, 22], iconAnchor: [11, 11] }),
+      });
+      const name = a.name ? escapeHtml(a.name) : "parkoló";
+      m.bindTooltip(`🅿️ ${name} · ${formatDistance(a.distM)}`, { direction: "top", offset: [0, -10] });
+      accessLayers.push(m);
+    }
+  }
+
+  highlight = L.layerGroup([casing, line, ...accessLayers, dot(start, fromV), dot(end, toV)]).addTo(map);
+  if (fit) {
+    // Frame the segment plus its access points so you can see where to park.
+    const bounds = L.latLngBounds(latlngs);
+    for (const v of [fromV, toV]) if (v.access) bounds.extend(toLatLng([v.access.lon, v.access.lat]));
+    map.fitBounds(bounds, { padding: [70, 70], maxZoom: 16 });
+  }
 
   const marks = edge.markings.length ? escapeHtml(edge.markings.join(" · ")) : "jelzett szakasz";
   const swatch = `<span class="swatch" style="background:${colour}"></span>`;
   const ends = endpointsText(fromV, toV);
   const endsLine = ends ? `<div class="ends">${escapeHtml(ends)}</div>` : "";
+  const access = accessSummary(fromV.access, toV.access);
+  const accessLine = access ? `<div class="access">${escapeHtml(access)}</div>` : "";
   const wayName = edge.name ? `<div class="wayname">${escapeHtml(edge.name)}</div>` : "";
   infoEl.innerHTML =
     `<div class="mark">${swatch}${marks}</div>` +
     endsLine +
     `<div class="len">${formatDistance(edge.lengthM)}</div>` +
+    accessLine +
     wayName;
 
   const [from, to] = shareEndpoints(edge);

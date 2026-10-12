@@ -39,6 +39,8 @@ export interface PoiProperties {
   name?: string;
   /** Elevation in metres, if tagged (peaks/saddles). */
   ele?: number;
+  /** OSM `access` value (e.g. "private", "customers", "yes") — mainly parking. */
+  access?: string;
 }
 
 export interface PoiFeature {
@@ -139,6 +141,7 @@ export function poisToGeoJson(response: OverpassPoiResponse): PoiFeatureCollecti
     if (tags.name) properties.name = tags.name;
     const ele = parseEle(tags.ele);
     if (ele !== undefined) properties.ele = ele;
+    if (tags.access) properties.access = tags.access;
 
     features.push({
       type: "Feature",

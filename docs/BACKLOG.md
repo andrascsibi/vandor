@@ -59,9 +59,15 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
 
 ## Trip planner ("reveal awesomest itinerary")
 
-- [ ] **T6 · Planner v0.** Given a segment, find nearest access point (parking/bus
-  stop vertex) and build an out-and-back circuit touching the segment.
-  *Product:* basic itinerary + vehicle/parking guess + total km.
+- [x] **T6 · Nearest car access (by-hand, not routed).** For each end of the
+  selected segment, bake the nearest *usable* parking (crow-flies) into the graph
+  (`graph/attach-access.ts`, offline) and show it: a 🅿️ marker + a thin dashed
+  straight line from the endpoint, with the distance in the panel ("🅿️ 0,4 km ·
+  0,7 km", deduped when both ends share a lot); fit frames the segment + its
+  parking. Deliberately dumb — it points at the car and leaves the approach-trail
+  judgment to the turista. `access` filter drops private/no/customers/permit
+  (2053 of 6735 parking excluded); all 804 endpoints got a point. *Next (real
+  planner):* route the approach, out-and-back circuits, transit, optimiser.
 
 - [ ] **T7 · Planner v1 (transit-aware).** Allow start ≠ end when reachable by
   bus/cogwheel/chairlift; prefer public transport where sensible.

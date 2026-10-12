@@ -19,6 +19,15 @@ import type { TrailFeatureCollection } from "../ingest/overpass.ts";
 
 export const MERGE_THRESHOLD_M = 50;
 
+/** Nearest car access point to a vertex (T6): a parking POI, crow-flies. */
+export interface AccessPoint {
+  lon: number;
+  lat: number;
+  name?: string;
+  /** Crow-flies distance from the vertex to this parking, metres (rounded). */
+  distM: number;
+}
+
 export interface Vertex {
   /** Compact 0-based index (the id edges reference). */
   id: number;
@@ -32,6 +41,8 @@ export interface Vertex {
   poiKind?: string;
   /** Elevation in metres, if the attached POI carries one. */
   ele?: number;
+  /** Nearest usable car-parking to this endpoint (T6), crow-flies. */
+  access?: AccessPoint;
 }
 
 export interface Edge {

@@ -48,7 +48,7 @@ describe("poisToGeoJson", () => {
         type: "way",
         id: 3,
         center: { lat: 47.54, lon: 18.98 },
-        tags: { amenity: "parking", name: "Normafa P" },
+        tags: { amenity: "parking", name: "Normafa P", access: "yes" },
       },
       // untagged / unclassifiable → dropped
       { type: "node", id: 4, lat: 47.55, lon: 18.99, tags: { man_made: "mast" } },
@@ -70,10 +70,11 @@ describe("poisToGeoJson", () => {
     expect(peak.properties.ele).toBe(527);
   });
 
-  it("locates way POIs by their center and records the osm type", () => {
+  it("locates way POIs by their center and records the osm type + access", () => {
     const parking = fc.features.find((f) => f.id === 3)!;
     expect(parking.properties.kind).toBe("parking");
     expect(parking.properties.osmType).toBe("way");
     expect(parking.geometry.coordinates).toEqual([18.98, 47.54]);
+    expect(parking.properties.access).toBe("yes");
   });
 });

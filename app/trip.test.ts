@@ -8,6 +8,7 @@ import {
   poiLabel,
   endpointsText,
   segmentsInBounds,
+  accessSummary,
 } from "./trip.ts";
 import type { Edge } from "../graph/graph.ts";
 
@@ -162,5 +163,23 @@ describe("segmentsInBounds", () => {
     const outside = seg([[20.0, 48.0], [20.1, 48.1]], 2);
     const result = segmentsInBounds([inside, outside], view);
     expect(result.map((e) => e.id)).toEqual([1]);
+  });
+});
+
+describe("accessSummary", () => {
+  const ap = (lon: number, lat: number, distM: number) => ({ lon, lat, distM });
+
+  it("lists the crow-flies parking distance for each end", () => {
+    expect(accessSummary(ap(19, 47, 164), ap(19.01, 47, 812))).toBe("🅿️ 164 m · 812 m");
+  });
+
+  it("dedupes when both ends share one lot", () => {
+    const shared = ap(19, 47, 400);
+    expect(accessSummary(shared, shared)).toBe("🅿️ 400 m");
+  });
+
+  it("handles one end only, and returns null for none", () => {
+    expect(accessSummary(ap(19, 47, 500), undefined)).toBe("🅿️ 500 m");
+    expect(accessSummary(undefined, undefined)).toBeNull();
   });
 });

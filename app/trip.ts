@@ -1,5 +1,5 @@
 // Pure helpers for the picker UI (T3). No DOM, no Leaflet — unit-testable.
-import type { Edge } from "../graph/graph.ts";
+import type { AccessPoint, Edge } from "../graph/graph.ts";
 
 /** [lon, lat] — the GeoJSON coordinate order used throughout the project. */
 export type Point = [number, number];
@@ -94,6 +94,25 @@ export function endpointsText(from: EndpointInfo, to: EndpointInfo): string | nu
 export function formatDistance(meters: number): string {
   if (meters < 1000) return `${Math.round(meters)} m`;
   return `${(meters / 1000).toFixed(1).replace(".", ",")} km`;
+}
+
+/**
+ * Panel text for a segment's nearest car access (T6): "🅿️ 0,4 km · 0,7 km" —
+ * the crow-flies parking distance for each end, deduped when both ends share
+ * one lot. Null when neither end has an access point.
+ */
+export function accessSummary(from?: AccessPoint, to?: AccessPoint): string | null {
+  const points = [from, to].filter((p): p is AccessPoint => !!p);
+  if (points.length === 0) return null;
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const p of points) {
+    const key = `${p.lon},${p.lat}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    parts.push(formatDistance(p.distM));
+  }
+  return `🅿️ ${parts.join(" · ")}`;
 }
 
 // Waymark colour → a hex that reads on an OpenTopoMap background (with a white
