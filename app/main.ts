@@ -81,7 +81,10 @@ const BASE_OPACITY = 0.85;
 // A túra (T7) is an ordered list of edge ids the user assembles by clicking.
 let network: L.LayerGroup | null = null; // base (non-túra) segments, canvas pane
 let tourLayer: L.LayerGroup | null = null; // the túra's highlighted segments + dots
+let emphasisLayer: L.LayerGroup | null = null; // the one segment hovered/tapped in the panel
 let accessLayer: L.LayerGroup | null = null; // candidate / chosen parking markers
+// Segment list starts collapsed on small screens so the panel doesn't eat the map.
+let segListExpanded = !window.matchMedia("(max-width: 640px)").matches;
 let tour: number[] = [];
 let chosenAccess: AccessCandidate | null = null; // the picked start parking
 let graphRef: SegmentGraph | null = null;
@@ -143,8 +146,8 @@ function drawTour(): void {
     const edge = edgesById.get(id);
     if (!edge) continue;
     const latlngs = latLngsOf(edge);
-    layers.push(L.polyline(latlngs, { color: "#fff", weight: 8, opacity: 0.95, interactive: false }));
-    const line = L.polyline(latlngs, { color: trailColour(edge.colours), weight: 4.5, opacity: 1 });
+    layers.push(L.polyline(latlngs, { color: "#fff", weight: 11, opacity: 0.95, interactive: false }));
+    const line = L.polyline(latlngs, { color: trailColour(edge.colours), weight: 6, opacity: 1 });
     line.on("click", () => toggleInTour(id));
     line.on("mouseover", () => { map.getContainer().style.cursor = "pointer"; });
     line.on("mouseout", () => { map.getContainer().style.cursor = ""; });
@@ -167,6 +170,23 @@ function drawTour(): void {
     }
   }
   tourLayer = L.layerGroup(layers).addTo(map);
+}
+
+// Spotlight one túra segment (hovered/tapped in the panel) in a vivid focus
+// colour laid over the túra — so you can find a specific row, e.g. the spur a ↩
+// flags, on the map. Pass null to clear.
+const EMPHASIS_COLOUR = "#ff2d95";
+function emphasize(id: number | null): void {
+  emphasisLayer?.remove();
+  emphasisLayer = null;
+  if (id == null) return;
+  const edge = edgesById.get(id);
+  if (!edge) return;
+  const latlngs = latLngsOf(edge);
+  emphasisLayer = L.layerGroup([
+    L.polyline(latlngs, { color: "#fff", weight: 15, opacity: 0.9, interactive: false }),
+    L.polyline(latlngs, { color: EMPHASIS_COLOUR, weight: 9, opacity: 1, interactive: false }),
+  ]).addTo(map);
 }
 
 // Candidate parking for the túra (T7d): all distinct lots when none is chosen;
@@ -238,7 +258,8 @@ function renderPanel(cands: AccessCandidate[]): void {
         ? `<span class="seg-spur" title="Zsákutca — oda-vissza, kétszer számít">↩</span>`
         : "";
       return (
-        `<li class="seg-row"><span class="seg-main">${swatch}${marks}${endsLabel}${spur}</span>` +
+        `<li class="seg-row" data-id="${id}"><span class="seg-main">${swatch}${marks}${endsLabel}</span>` +
+        spur +
         `<span class="seg-len">${formatDistance(e.lengthM)}</span>` +
         `<button class="seg-remove" type="button" data-id="${id}" title="Töröld a szakaszt">✕</button></li>`
       );
@@ -276,11 +297,16 @@ function renderPanel(cands: AccessCandidate[]): void {
     pieces === 1 && liveEnds.length >= 2
       ? `<button class="close-loop" type="button">🔄 Zárd be a kört</button>`
       : "";
+  // The segment list is collapsible (tap the header) — closed by default on phones
+  // so the panel doesn't cover the map.
+  const caret = segListExpanded ? "▾" : "▸";
   infoEl.innerHTML =
-    `<div class="tour-head"><strong>Túra</strong> · ${tour.length} szakasz · <span class="tour-total">${formatDistance(walking)}</span></div>` +
+    `<button class="tour-head seg-toggle" type="button" aria-expanded="${segListExpanded}">` +
+    `<span class="seg-caret">${caret}</span>` +
+    `<span><strong>Túra</strong> · ${tour.length} szakasz · <span class="tour-total">${formatDistance(walking)}</span></span></button>` +
     odaVissza +
     warnLine +
-    `<ul class="seg-list">${rows}</ul>` +
+    `<ul class="seg-list${segListExpanded ? "" : " collapsed"}">${rows}</ul>` +
     loopBtn +
     accessLine +
     `<button class="clear" type="button">Ürítsd a túrát</button>`;
@@ -331,6 +357,7 @@ function fitTour(): void {
 }
 
 function rebuild(): void {
+  emphasize(null); // drop any spotlight; rows are re-rendered below
   const cands = tourAccessPoints(tour, edgesById, vById);
   // Drop the chosen start if the túra changed so it's no longer a candidate.
   if (chosenAccess && !cands.some((c) => c.lon === chosenAccess!.lon && c.lat === chosenAccess!.lat)) {
@@ -350,6 +377,26 @@ infoEl.addEventListener("click", (ev) => {
   const remove = target.closest(".seg-remove") as HTMLElement | null;
   if (remove) {
     toggleInTour(Number(remove.dataset.id));
+    return;
+  }
+  // Collapse / expand the segment list (no full re-render — just toggle classes).
+  if (target.closest(".seg-toggle")) {
+    segListExpanded = !segListExpanded;
+    infoEl.querySelector(".seg-list")?.classList.toggle("collapsed", !segListExpanded);
+    const toggle = infoEl.querySelector(".seg-toggle");
+    toggle?.setAttribute("aria-expanded", String(segListExpanded));
+    const caret = infoEl.querySelector(".seg-caret");
+    if (caret) caret.textContent = segListExpanded ? "▾" : "▸";
+    return;
+  }
+  // Tap a row (not its ✕) → spotlight that segment and frame it on the map. This
+  // is how you find a row on the map on touch, where there's no hover.
+  const row = target.closest(".seg-row") as HTMLElement | null;
+  if (row) {
+    const id = Number(row.dataset.id);
+    emphasize(id);
+    const edge = edgesById.get(id);
+    if (edge) map.fitBounds(L.latLngBounds(latLngsOf(edge)), { padding: [60, 60], maxZoom: 16 });
     return;
   }
   if (target.closest(".fill-gap")) {
@@ -379,6 +426,16 @@ infoEl.addEventListener("click", (ev) => {
     chosenAccess = null;
     rebuild();
   }
+});
+
+// Hover a segment row → spotlight it on the map; clear when the pointer leaves it.
+infoEl.addEventListener("mouseover", (ev) => {
+  const row = (ev.target as HTMLElement).closest(".seg-row") as HTMLElement | null;
+  if (row) emphasize(Number(row.dataset.id));
+});
+infoEl.addEventListener("mouseout", (ev) => {
+  const row = (ev.target as HTMLElement).closest(".seg-row") as HTMLElement | null;
+  if (row && !row.contains(ev.relatedTarget as Node)) emphasize(null);
 });
 
 async function init(): Promise<void> {

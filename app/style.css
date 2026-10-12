@@ -131,6 +131,31 @@ body {
   color: var(--earth);
 }
 
+/* The header doubles as the collapse toggle for the segment list. */
+.info button.tour-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  font-size: 1.02rem;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.info .seg-caret {
+  flex: 0 0 auto;
+  color: #8a8172;
+  font-size: 0.8rem;
+}
+
+.info .seg-list.collapsed {
+  display: none;
+}
+
 .info .tour-total {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -164,6 +189,7 @@ body {
   font-size: 0.92rem;
   line-height: 1.2;
   overflow: hidden;
+  cursor: pointer; /* tap/hover a row to spotlight the segment on the map */
 }
 
 .info .seg-ends {
@@ -310,4 +336,19 @@ body {
 /* Leaflet attribution sits better with a touch of transparency. */
 .leaflet-container {
   font-family: inherit;
+}
+
+/* On phones the panel shares the screen with the map: cap its height and let the
+   (collapsed-by-default) segment list scroll inside rather than cover the map. */
+@media (max-width: 640px) {
+  #panel {
+    width: calc(100vw - 1rem);
+    max-height: calc(100dvh - 2rem);
+    gap: 0.6rem;
+    padding: 0.8rem 0.9rem 0.9rem;
+  }
+
+  .info .seg-list {
+    max-height: 34vh;
+  }
 }
