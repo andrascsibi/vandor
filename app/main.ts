@@ -21,6 +21,7 @@ import {
   tourWalkingLengthM,
   isRetraceSpur,
   orderedWaypoints,
+  orderedSegments,
   tourAccessPoints,
   encodeTourHash,
   parseTourHash,
@@ -363,6 +364,10 @@ function rebuild(): void {
   if (chosenAccess && !cands.some((c) => c.lon === chosenAccess!.lon && c.lat === chosenAccess!.lat)) {
     chosenAccess = null;
   }
+  // Keep the segments in walking order (start → finish, from the chosen parking
+  // when there is one), so the panel list and shared hash read in sequence.
+  const startPt = chosenAccess ? ([chosenAccess.lon, chosenAccess.lat] as [number, number]) : undefined;
+  tour = orderedSegments(tour, edgesById, vById, startPt);
   drawTour();
   drawNetwork();
   drawAccess(cands);

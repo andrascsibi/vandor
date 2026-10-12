@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toggleSegment, totalLengthM, tourWalkingLengthM, isRetraceSpur, orderedWaypoints, tourAccessPoints, encodeTourHash, parseTourHash } from "./tour.ts";
+import { toggleSegment, totalLengthM, tourWalkingLengthM, isRetraceSpur, orderedWaypoints, orderedSegments, tourAccessPoints, encodeTourHash, parseTourHash } from "./tour.ts";
 import type { Edge, Vertex } from "../graph/graph.ts";
 
 const v = (id: number, lon: number, lat: number): Vertex => ({ id, osmId: id, lon, lat });
@@ -92,6 +92,32 @@ describe("orderedWaypoints", () => {
   it("without a preferred start keeps the open-end-first default", () => {
     const byId = new Map([e(1, 1, 2, 1), e(2, 0, 1, 1), e(3, 2, 3, 1)].map((x) => [x.id, x]));
     expect(orderedWaypoints([1, 2, 3], byId, vs)[0]).toEqual([19.0, 47.0]);
+  });
+});
+
+describe("orderedSegments", () => {
+  const vs = new Map([v(0, 19.0, 47.0), v(1, 19.1, 47.0), v(2, 19.2, 47.0), v(3, 19.3, 47.0)].map((x) => [x.id, x]));
+
+  it("re-sequences click order into walking order", () => {
+    const byId = new Map([e(1, 1, 2, 1), e(2, 0, 1, 1), e(3, 2, 3, 1)].map((x) => [x.id, x]));
+    // segments 1-2, 0-1, 2-3 → walk 0→1→2→3 touches edges 2, 1, 3 in that order.
+    expect(orderedSegments([1, 2, 3], byId, vs)).toEqual([2, 1, 3]);
+  });
+
+  it("starts from the end nearest the preferred start (parking)", () => {
+    const byId = new Map([e(1, 1, 2, 1), e(2, 0, 1, 1), e(3, 2, 3, 1)].map((x) => [x.id, x]));
+    // Parking by vertex 3 → walk 3→2→1→0 touches edges 3, 1, 2.
+    expect(orderedSegments([1, 2, 3], byId, vs, [19.31, 47.0])).toEqual([3, 1, 2]);
+  });
+
+  it("is a permutation even when disconnected (keeps every id)", () => {
+    const byId = new Map([e(1, 0, 1, 1), e(2, 2, 3, 1)].map((x) => [x.id, x]));
+    expect(orderedSegments([1, 2], byId, vs).sort()).toEqual([1, 2]);
+  });
+
+  it("appends ids it can't place (unknown / self-loop) rather than dropping them", () => {
+    const byId = new Map([e(1, 0, 1, 1), e(2, 2, 2, 1)].map((x) => [x.id, x])); // 2 is a self-loop
+    expect(orderedSegments([1, 2, 99], byId, vs)).toEqual([1, 2, 99]);
   });
 });
 

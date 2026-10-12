@@ -127,25 +127,24 @@ interface Link {
 }
 
 /**
- * Order the túra's segments into a walking sequence and return the ordered
- * endpoint-vertex coordinates (the junctions Mapy routes through). Greedy chain:
- * start at an open end (a vertex used by exactly one túra segment) if there is
- * one, else any vertex; follow unused segments, sharing vertices. When a walk
- * dead-ends with segments left (a disconnected or branching túra), it jumps to
- * a remaining segment — Mapy will route across the gap.
- *
- * `preferredStart` (the chosen parking, when there is one) biases the start: the
- * chain begins at the open end nearest the car, so Mapy flows park → near end →
- * through the túra → far end → back, instead of park → middle → back-and-forth.
+ * Walk the túra into a single sequence: greedy chain starting at an open end (a
+ * vertex used by exactly one túra segment) if there is one, else any vertex;
+ * follow unused segments, sharing vertices. When the walk dead-ends with segments
+ * left (a disconnected or branching túra) it jumps to a remaining segment — a gap
+ * the Mapy route spans. `preferredStart` (the chosen parking, when there is one)
+ * biases the start: begin at the vertex nearest the car. Returns both the segment
+ * ids in walk order and the endpoint-vertex coords, so the panel list and the
+ * Mapy link stay in the same sequence. Self-loop segments are skipped here and
+ * reattached by `orderedSegments`.
  */
-export function orderedWaypoints(
+function walkTour(
   ids: number[],
   byId: Map<number, Edge>,
   vById: Map<number, Vertex>,
   preferredStart?: Point,
-): Point[] {
+): { order: number[]; coords: Point[] } {
   const edges = ids.map((id) => byId.get(id)).filter((e): e is Edge => !!e && e.from !== e.to);
-  if (edges.length === 0) return [];
+  if (edges.length === 0) return { order: [], coords: [] };
 
   const adj = new Map<number, Link[]>();
   const addLink = (v: number, link: Link) => {
@@ -182,23 +181,63 @@ export function orderedWaypoints(
     }
   }
   const usedEdges = new Set<number>();
-  const out: Point[] = [coord(start)];
+  const order: number[] = [];
+  const coords: Point[] = [coord(start)];
   let cur = start;
 
   while (usedEdges.size < edges.length) {
     const next = adj.get(cur)?.find((l) => !usedEdges.has(l.edgeId));
     if (next) {
       usedEdges.add(next.edgeId);
+      order.push(next.edgeId);
       cur = next.other;
-      out.push(coord(cur));
+      coords.push(coord(cur));
     } else {
       // Dead end with segments left: jump to a remaining segment.
       const left = edges.find((e) => !usedEdges.has(e.id))!;
       usedEdges.add(left.id);
-      out.push(coord(left.from));
+      order.push(left.id);
+      coords.push(coord(left.from));
       cur = left.to;
-      out.push(coord(cur));
+      coords.push(coord(cur));
     }
   }
-  return out;
+  return { order, coords };
+}
+
+/**
+ * The túra's endpoint-vertex coordinates in walking order — the junctions the
+ * Mapy share link routes through. See `walkTour`.
+ */
+export function orderedWaypoints(
+  ids: number[],
+  byId: Map<number, Edge>,
+  vById: Map<number, Vertex>,
+  preferredStart?: Point,
+): Point[] {
+  return walkTour(ids, byId, vById, preferredStart).coords;
+}
+
+/**
+ * The túra's segment ids re-sequenced into walking order (same chain `walkTour`
+ * gives the Mapy link), so the panel list reads start → finish instead of click
+ * order. A permutation of the input: any ids the walk can't place — self-loops,
+ * unknown ids — are appended, so nothing is dropped.
+ */
+export function orderedSegments(
+  ids: number[],
+  byId: Map<number, Edge>,
+  vById: Map<number, Vertex>,
+  preferredStart?: Point,
+): number[] {
+  const { order } = walkTour(ids, byId, vById, preferredStart);
+  const placed = new Set(order);
+  const result = [...order];
+  for (const id of ids) {
+    if (!placed.has(id)) {
+      placed.add(id);
+      result.push(id);
+    }
+  }
+  return result;
 }
