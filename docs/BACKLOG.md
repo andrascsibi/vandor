@@ -42,8 +42,29 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
   conflict). *Product:* **134 named vertices** (103 from splits) → the picker
   shows "⛰️ Határ-nyereg → 🔭 Oroszlán-szikla". Access POIs wait for the planner.
 
-- [ ] **T5 · Elevation enrichment.** Sample a DEM along each segment → store
-  profile + gain/loss/max grade. *Product:* segments gain difficulty signal.
+## Explore the network
+
+- [ ] **T5 · Segment network explorer (viewport).** Draw **all in-viewport
+  segments** as the base layer — thin lines coloured by waymark — not just the
+  one that was rolled. **Click/tap any segment → it becomes the selected
+  highlight and the panel updates** (the same panel the random pick fills:
+  marks, named endpoints, length, Mapy link). A hands-on, browse-the-web way to
+  explore, alongside "Vándor dob". This is the heart of Vándor's thesis: for the
+  real *turista* the **trail segment is the unit of exploration**, not the POI —
+  so the network of segments is what we put on screen. *Product:* pan/zoom the
+  whole marked-trail web and pick any segment by hand.
+  - *How:* only render the current viewport — cull segments to `map.getBounds()`
+    and redraw on `moveend`/`zoomend` (~1054 segments total, so this stays light;
+    it's really about not drawing the whole country when zoomed in). Keep the
+    selected segment visually distinct (the existing white-cased coloured line)
+    layered above the thin base network; dim/thin the rest. Click hit-testing via
+    Leaflet polyline `click` events.
+  - *Testable:* a pure `segmentsInBounds(edges, bounds)` filter (does an edge's
+    bbox intersect the viewport?) — unit-tested; the Leaflet wiring is glue.
+  - *Secondary, optional (may clutter — the user is wary):* also show in-viewport
+    **POIs** as small kind icons with hover info. The 14.6k POIs make this a
+    viewport-cull job too. Add behind a toggle or only if it doesn't drown the
+    trails — the segments are the point, POIs are context.
 
 ## Trip planner ("reveal awesomest itinerary")
 
@@ -66,6 +87,9 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
 
 ## Later / nice-to-have
 
+- [ ] **Elevation enrichment.** Sample a DEM along each segment → store profile +
+  gain/loss/max grade. Segments gain a difficulty signal. (Was T5; demoted to
+  nice-to-have — the segment explorer matters more right now.)
 - [ ] URL/hash state so a chosen segment is shareable/bookmarkable (kertiteto pattern).
 - [ ] **Spaced-repetition memory** (Benedek István, *"járt utat járatlanért"*):
   personal persistence of which segment was walked *when*; weight the picker by
