@@ -10,6 +10,36 @@ export function pickRandomSegment(edges: Edge[], rng: () => number = Math.random
   return edges[Math.floor(rng() * edges.length)];
 }
 
+/** Geographic viewport, degrees (the Leaflet bounds the UI passes in). */
+export interface GeoBounds {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+}
+
+/**
+ * Segments whose coordinate bounding box intersects the viewport — the base
+ * network to draw for the current view (T5). A bbox test, so a segment whose
+ * box overlaps but whose line doesn't quite enter is still kept; cheap and the
+ * canvas clips the overflow. Lets us never draw the whole region when zoomed in.
+ */
+export function segmentsInBounds(edges: Edge[], b: GeoBounds): Edge[] {
+  return edges.filter((e) => {
+    let w = Infinity;
+    let s = Infinity;
+    let ee = -Infinity;
+    let n = -Infinity;
+    for (const [lon, lat] of e.coordinates) {
+      if (lon < w) w = lon;
+      if (lon > ee) ee = lon;
+      if (lat < s) s = lat;
+      if (lat > n) n = lat;
+    }
+    return w <= b.east && ee >= b.west && s <= b.north && n >= b.south;
+  });
+}
+
 /**
  * The two points to hand to Mapy for a share link. Normally the segment's two
  * endpoints; for a self-loop (both ends the same vertex) we aim at the far side

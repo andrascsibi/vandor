@@ -11,6 +11,8 @@ import {
   trailColour,
   poiLabel,
   endpointsText,
+  segmentsInBounds,
+  type GeoBounds,
 } from "./trip.ts";
 
 const BUDA_HILLS_CENTER: L.LatLngTuple = [47.54, 18.97];
@@ -22,6 +24,13 @@ L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
     'Térkép: © <a href="https://opentopomap.org/">OpenTopoMap</a> (CC-BY-SA) · ' +
     'adatok © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
 }).addTo(map);
+
+// Base layer: every in-viewport segment, drawn thin on a canvas pane *below* the
+// selected-segment highlight so the pick still pops. Canvas handles ~1000 lines
+// and gives cheap click hit-testing with a little tolerance for thin lines.
+map.createPane("network");
+map.getPane("network")!.style.zIndex = "350";
+const netRenderer = L.canvas({ pane: "network", padding: 0.5, tolerance: 6 });
 
 const rollBtn = document.getElementById("roll") as HTMLButtonElement;
 const infoEl = document.getElementById("info") as HTMLDivElement;
@@ -41,16 +50,63 @@ function escapeHtml(s: string): string {
 // [lon, lat] (GeoJSON) → [lat, lon] (Leaflet).
 const toLatLng = ([lon, lat]: [number, number]): L.LatLngTuple => [lat, lon];
 
-let highlight: L.LayerGroup | null = null;
+const BASE_WEIGHT = 3.5;
+const BASE_OPACITY = 0.85;
 
-function showSegment(edge: Edge, vertices: Vertex[]): void {
+let highlight: L.LayerGroup | null = null;
+let network: L.LayerGroup | null = null;
+let selectedId = -1;
+let graphRef: SegmentGraph | null = null;
+
+// Redraw the base network for the current viewport, skipping the selected
+// segment (it lives in the highlight layer, drawn on top).
+function drawNetwork(graph: SegmentGraph): void {
+  map.getContainer().style.cursor = ""; // a redraw may drop a hovered line
+  const b = map.getBounds();
+  const bounds: GeoBounds = {
+    west: b.getWest(),
+    south: b.getSouth(),
+    east: b.getEast(),
+    north: b.getNorth(),
+  };
+  const visible = segmentsInBounds(graph.edges, bounds);
+  const lines = visible
+    .filter((edge) => edge.id !== selectedId)
+    .map((edge) => {
+      const pl = L.polyline(edge.coordinates.map(toLatLng), {
+        renderer: netRenderer,
+        pane: "network",
+        color: trailColour(edge.colours),
+        weight: BASE_WEIGHT,
+        opacity: BASE_OPACITY,
+      });
+      pl.on("click", () => selectSegment(edge, graph.vertices, false));
+      pl.on("mouseover", () => {
+        pl.setStyle({ weight: 6, opacity: 1 });
+        map.getContainer().style.cursor = "pointer";
+      });
+      pl.on("mouseout", () => {
+        pl.setStyle({ weight: BASE_WEIGHT, opacity: BASE_OPACITY });
+        map.getContainer().style.cursor = "";
+      });
+      return pl;
+    });
+  network?.remove();
+  network = L.layerGroup(lines).addTo(map);
+}
+
+// Select a segment: draw its highlight + fill the panel. `fit` zooms to it (the
+// random roll); a map click selects in place (fit = false).
+function selectSegment(edge: Edge, vertices: Vertex[], fit: boolean): void {
   highlight?.remove();
+  selectedId = edge.id;
 
   const latlngs = edge.coordinates.map(toLatLng);
   const colour = trailColour(edge.colours);
   // White casing under the coloured line so every waymark colour reads on topo.
-  const casing = L.polyline(latlngs, { color: "#fff", weight: 8, opacity: 0.95 });
-  const line = L.polyline(latlngs, { color: colour, weight: 4.5, opacity: 1 });
+  // interactive: false — let clicks fall through to the base network beneath.
+  const casing = L.polyline(latlngs, { color: "#fff", weight: 8, opacity: 0.95, interactive: false });
+  const line = L.polyline(latlngs, { color: colour, weight: 4.5, opacity: 1, interactive: false });
   const fromV = vertices[edge.from];
   const toV = vertices[edge.to];
   const start = edge.coordinates[0];
@@ -68,7 +124,7 @@ function showSegment(edge: Edge, vertices: Vertex[]): void {
     return m;
   };
   highlight = L.layerGroup([casing, line, dot(start, fromV), dot(end, toV)]).addTo(map);
-  map.fitBounds(line.getBounds(), { padding: [70, 70], maxZoom: 16 });
+  if (fit) map.fitBounds(line.getBounds(), { padding: [70, 70], maxZoom: 16 });
 
   const marks = edge.markings.length ? escapeHtml(edge.markings.join(" · ")) : "jelzett szakasz";
   const swatch = `<span class="swatch" style="background:${colour}"></span>`;
@@ -84,13 +140,20 @@ function showSegment(edge: Edge, vertices: Vertex[]): void {
   const [from, to] = shareEndpoints(edge);
   mapyEl.href = mapyRouteUrl(from, to);
   mapyEl.removeAttribute("aria-disabled");
+
+  // Refresh the base so the newly selected segment drops out of it and any
+  // previously selected one returns. (fitBounds will also redraw via moveend.)
+  if (graphRef) drawNetwork(graphRef);
 }
 
 async function init(): Promise<void> {
   const graph = (await fetch(graphUrl).then((r) => r.json())) as SegmentGraph;
-  const roll = () => showSegment(pickRandomSegment(graph.edges), graph.vertices);
+  graphRef = graph;
+  const roll = () => selectSegment(pickRandomSegment(graph.edges), graph.vertices, true);
   rollBtn.addEventListener("click", roll);
-  roll(); // land on a random segment immediately
+  // Keep the base network in sync with the viewport on pan/zoom.
+  map.on("moveend", () => drawNetwork(graph));
+  roll(); // land on a random segment immediately (also draws the network)
 }
 
 void init();

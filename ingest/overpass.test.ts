@@ -7,7 +7,6 @@ import {
   clipToRadius,
   haversineM,
   osmToGeoJson,
-  type LonLat,
   type OverpassResponse,
   type TrailFeatureCollection,
 } from "./overpass.ts";
@@ -44,9 +43,9 @@ describe("bboxAround", () => {
 });
 
 describe("clipToRadius", () => {
-  const center: LonLat = SZELL_KALMAN_TER;
-  const near: LonLat = [center[0] + 0.01, center[1]]; // ~750 m east
-  const far: LonLat = [center[0] + 1, center[1]]; // ~75 km east
+  const center: [number, number] = [SZELL_KALMAN_TER[0], SZELL_KALMAN_TER[1]];
+  const near: [number, number] = [center[0] + 0.01, center[1]]; // ~750 m east
+  const far: [number, number] = [center[0] + 1, center[1]]; // ~75 km east
   const fc: TrailFeatureCollection = {
     type: "FeatureCollection",
     features: [

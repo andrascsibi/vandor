@@ -7,6 +7,7 @@ import {
   trailColour,
   poiLabel,
   endpointsText,
+  segmentsInBounds,
 } from "./trip.ts";
 import type { Edge } from "../graph/graph.ts";
 
@@ -132,5 +133,34 @@ describe("poiLabel / endpointsText", () => {
 
   it("returns null when neither endpoint is named", () => {
     expect(endpointsText({}, {})).toBeNull();
+  });
+});
+
+describe("segmentsInBounds", () => {
+  const seg = (coords: [number, number][], id = 0): Edge =>
+    ({ id, from: 0, to: 1, lengthM: 100, coordinates: coords, ways: [1], colours: [], markings: [] });
+  // viewport over the Buda hills
+  const view = { west: 18.95, south: 47.5, east: 19.05, north: 47.56 };
+
+  it("keeps a segment inside the viewport", () => {
+    const s = seg([[19.0, 47.52], [19.01, 47.53]]);
+    expect(segmentsInBounds([s], view)).toHaveLength(1);
+  });
+
+  it("drops a segment fully outside the viewport", () => {
+    const s = seg([[18.0, 47.0], [18.01, 47.01]]);
+    expect(segmentsInBounds([s], view)).toHaveLength(0);
+  });
+
+  it("keeps a segment that straddles the viewport boundary", () => {
+    const s = seg([[18.90, 47.52], [19.0, 47.52]]); // enters from the west
+    expect(segmentsInBounds([s], view)).toHaveLength(1);
+  });
+
+  it("filters a mixed set to only the visible ones", () => {
+    const inside = seg([[19.0, 47.52], [19.02, 47.53]], 1);
+    const outside = seg([[20.0, 48.0], [20.1, 48.1]], 2);
+    const result = segmentsInBounds([inside, outside], view);
+    expect(result.map((e) => e.id)).toEqual([1]);
   });
 });

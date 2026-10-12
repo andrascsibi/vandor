@@ -44,27 +44,18 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
 
 ## Explore the network
 
-- [ ] **T5 · Segment network explorer (viewport).** Draw **all in-viewport
-  segments** as the base layer — thin lines coloured by waymark — not just the
-  one that was rolled. **Click/tap any segment → it becomes the selected
-  highlight and the panel updates** (the same panel the random pick fills:
-  marks, named endpoints, length, Mapy link). A hands-on, browse-the-web way to
-  explore, alongside "Vándor dob". This is the heart of Vándor's thesis: for the
-  real *turista* the **trail segment is the unit of exploration**, not the POI —
-  so the network of segments is what we put on screen. *Product:* pan/zoom the
-  whole marked-trail web and pick any segment by hand.
-  - *How:* only render the current viewport — cull segments to `map.getBounds()`
-    and redraw on `moveend`/`zoomend` (~1054 segments total, so this stays light;
-    it's really about not drawing the whole country when zoomed in). Keep the
-    selected segment visually distinct (the existing white-cased coloured line)
-    layered above the thin base network; dim/thin the rest. Click hit-testing via
-    Leaflet polyline `click` events.
-  - *Testable:* a pure `segmentsInBounds(edges, bounds)` filter (does an edge's
-    bbox intersect the viewport?) — unit-tested; the Leaflet wiring is glue.
-  - *Secondary, optional (may clutter — the user is wary):* also show in-viewport
-    **POIs** as small kind icons with hover info. The 14.6k POIs make this a
-    viewport-cull job too. Add behind a toggle or only if it doesn't drown the
-    trails — the segments are the point, POIs are context.
+- [x] **T5 · Segment network explorer (viewport).** All in-viewport segments
+  are drawn as a bold base layer coloured by waymark (canvas pane below the
+  highlight); **click/tap any segment → it's selected and the panel updates**
+  (same panel as the random pick), a hands-on alternative to "Vándor dob". The
+  heart of Vándor's thesis: the **segment is the unit of exploration, not the
+  POI**. Viewport-culled via the pure `segmentsInBounds(edges, bounds)` (bbox
+  intersection, unit-tested), redrawn on `moveend`; selected segment excluded
+  from the base and layered above with its white-cased highlight. Canvas
+  `tolerance` makes thin lines easy to click; hover thickens + sets a pointer
+  cursor; a panel hint invites clicking.
+  - *Still optional (deferred — user wary of clutter):* in-viewport **POI** icons
+    with hover info, viewport-culled and behind a toggle. Segments are the point.
 
 ## Trip planner ("reveal awesomest itinerary")
 

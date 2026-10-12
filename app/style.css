@@ -128,6 +128,13 @@ body {
   pointer-events: none;
 }
 
+.tip {
+  margin: 0;
+  color: #8a8172;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
 /* Leaflet attribution sits better with a touch of transparency. */
 .leaflet-container {
   font-family: inherit;
