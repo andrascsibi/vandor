@@ -5,16 +5,15 @@ import graphUrl from "../data/segments.json?url";
 import type { Edge, SegmentGraph, Vertex } from "../graph/graph.ts";
 import {
   pickRandomSegment,
-  shareEndpoints,
-  mapyRouteUrl,
   formatDistance,
   trailColour,
   poiLabel,
   endpointsText,
-  accessSummary,
+  mapyTripUrl,
   segmentsInBounds,
   type GeoBounds,
 } from "./trip.ts";
+import { toggleSegment, totalLengthM, orderedWaypoints } from "./tour.ts";
 
 const BUDA_HILLS_CENTER: L.LatLngTuple = [47.54, 18.97];
 
@@ -54,146 +53,165 @@ const toLatLng = ([lon, lat]: [number, number]): L.LatLngTuple => [lat, lon];
 const BASE_WEIGHT = 3.5;
 const BASE_OPACITY = 0.85;
 
-let highlight: L.LayerGroup | null = null;
-let network: L.LayerGroup | null = null;
-let selectedId = -1;
+// A túra (T7) is an ordered list of edge ids the user assembles by clicking.
+let network: L.LayerGroup | null = null; // base (non-túra) segments, canvas pane
+let tourLayer: L.LayerGroup | null = null; // the túra's highlighted segments + dots
+let tour: number[] = [];
 let graphRef: SegmentGraph | null = null;
+const edgesById = new Map<number, Edge>();
+const vById = new Map<number, Vertex>();
 
-// Redraw the base network for the current viewport, skipping the selected
-// segment (it lives in the highlight layer, drawn on top).
-function drawNetwork(graph: SegmentGraph): void {
+const latLngsOf = (edge: Edge) => edge.coordinates.map(toLatLng);
+
+// Toggle a segment in/out of the túra, then redraw everything.
+function toggleInTour(id: number): void {
+  tour = toggleSegment(tour, id);
+  rebuild();
+}
+
+// Base network: in-viewport segments NOT in the túra, thin + clickable to add.
+function drawNetwork(): void {
+  if (!graphRef) return;
   map.getContainer().style.cursor = ""; // a redraw may drop a hovered line
   const b = map.getBounds();
-  const bounds: GeoBounds = {
-    west: b.getWest(),
-    south: b.getSouth(),
-    east: b.getEast(),
-    north: b.getNorth(),
-  };
-  const visible = segmentsInBounds(graph.edges, bounds);
-  const lines = visible
-    .filter((edge) => edge.id !== selectedId)
-    .map((edge) => {
-      const pl = L.polyline(edge.coordinates.map(toLatLng), {
-        renderer: netRenderer,
-        pane: "network",
-        color: trailColour(edge.colours),
-        weight: BASE_WEIGHT,
-        opacity: BASE_OPACITY,
-      });
-      pl.on("click", () => selectSegment(edge, graph.vertices, false));
-      pl.on("mouseover", () => {
-        pl.setStyle({ weight: 6, opacity: 1 });
-        map.getContainer().style.cursor = "pointer";
-      });
-      pl.on("mouseout", () => {
-        pl.setStyle({ weight: BASE_WEIGHT, opacity: BASE_OPACITY });
-        map.getContainer().style.cursor = "";
-      });
-      return pl;
+  const bounds: GeoBounds = { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() };
+  const inTour = new Set(tour);
+  const visible = segmentsInBounds(graphRef.edges, bounds).filter((e) => !inTour.has(e.id));
+  const lines = visible.map((edge) => {
+    const pl = L.polyline(latLngsOf(edge), {
+      renderer: netRenderer,
+      pane: "network",
+      color: trailColour(edge.colours),
+      weight: BASE_WEIGHT,
+      opacity: BASE_OPACITY,
     });
+    pl.on("click", () => toggleInTour(edge.id));
+    pl.on("mouseover", () => {
+      pl.setStyle({ weight: 6, opacity: 1 });
+      map.getContainer().style.cursor = "pointer";
+    });
+    pl.on("mouseout", () => {
+      pl.setStyle({ weight: BASE_WEIGHT, opacity: BASE_OPACITY });
+      map.getContainer().style.cursor = "";
+    });
+    return pl;
+  });
   network?.remove();
   network = L.layerGroup(lines).addTo(map);
 }
 
-// Select a segment: draw its highlight + fill the panel. `fit` zooms to it (the
-// random roll); a map click selects in place (fit = false).
-function selectSegment(edge: Edge, vertices: Vertex[], fit: boolean): void {
-  highlight?.remove();
-  selectedId = edge.id;
-
-  const latlngs = edge.coordinates.map(toLatLng);
-  const colour = trailColour(edge.colours);
-  // White casing under the coloured line so every waymark colour reads on topo.
-  // interactive: false — let clicks fall through to the base network beneath.
-  const casing = L.polyline(latlngs, { color: "#fff", weight: 8, opacity: 0.95, interactive: false });
-  const line = L.polyline(latlngs, { color: colour, weight: 4.5, opacity: 1, interactive: false });
-  const fromV = vertices[edge.from];
-  const toV = vertices[edge.to];
-  const start = edge.coordinates[0];
-  const end = edge.coordinates[edge.coordinates.length - 1];
-  const dot = (p: [number, number], v: Vertex) => {
-    const m = L.circleMarker(toLatLng(p), {
-      radius: 6,
-      color: "#fff",
-      weight: 2,
-      fillColor: "#2b2620",
-      fillOpacity: 1,
-    });
-    const label = poiLabel(v);
-    if (label) m.bindTooltip(label, { direction: "top", offset: [0, -6] });
-    return m;
-  };
-
-  // Nearest car access (T6): a dashed crow-flies line from each end to its
-  // parking, and a 🅿️ marker (deduped when both ends share one lot). The gap is
-  // the turista's to bridge — we only point at the car.
-  const accessLayers: L.Layer[] = [];
-  const drawnAccess = new Set<string>();
-  for (const v of [fromV, toV]) {
-    const a = v.access;
-    if (!a) continue;
-    const accLL = toLatLng([a.lon, a.lat]);
-    accessLayers.push(
-      L.polyline([toLatLng([v.lon, v.lat]), accLL], {
-        color: "#333",
+// The túra: each member segment highlighted (white casing + colour), click to
+// remove; a dot at every distinct endpoint, named ones carrying a tooltip.
+function drawTour(): void {
+  tourLayer?.remove();
+  const layers: L.Layer[] = [];
+  const dotSeen = new Set<number>();
+  for (const id of tour) {
+    const edge = edgesById.get(id);
+    if (!edge) continue;
+    const latlngs = latLngsOf(edge);
+    layers.push(L.polyline(latlngs, { color: "#fff", weight: 8, opacity: 0.95, interactive: false }));
+    const line = L.polyline(latlngs, { color: trailColour(edge.colours), weight: 4.5, opacity: 1 });
+    line.on("click", () => toggleInTour(id));
+    line.on("mouseover", () => { map.getContainer().style.cursor = "pointer"; });
+    line.on("mouseout", () => { map.getContainer().style.cursor = ""; });
+    layers.push(line);
+    for (const vid of [edge.from, edge.to]) {
+      if (dotSeen.has(vid)) continue;
+      dotSeen.add(vid);
+      const vx = vById.get(vid);
+      if (!vx) continue;
+      const m = L.circleMarker(toLatLng([vx.lon, vx.lat]), {
+        radius: 6,
+        color: "#fff",
         weight: 2,
-        opacity: 0.85,
-        dashArray: "2 7",
-        interactive: false,
-      }),
-    );
-    const key = `${a.lon},${a.lat}`;
-    if (!drawnAccess.has(key)) {
-      drawnAccess.add(key);
-      const m = L.marker(accLL, {
-        icon: L.divIcon({ className: "pmark-wrap", html: '<div class="pmark">P</div>', iconSize: [22, 22], iconAnchor: [11, 11] }),
+        fillColor: "#2b2620",
+        fillOpacity: 1,
       });
-      const name = a.name ? escapeHtml(a.name) : "parkoló";
-      m.bindTooltip(`🅿️ ${name} · ${formatDistance(a.distM)}`, { direction: "top", offset: [0, -10] });
-      accessLayers.push(m);
+      const label = poiLabel(vx);
+      if (label) m.bindTooltip(label, { direction: "top", offset: [0, -6] });
+      layers.push(m);
     }
   }
-
-  highlight = L.layerGroup([casing, line, ...accessLayers, dot(start, fromV), dot(end, toV)]).addTo(map);
-  if (fit) {
-    // Frame the segment plus its access points so you can see where to park.
-    const bounds = L.latLngBounds(latlngs);
-    for (const v of [fromV, toV]) if (v.access) bounds.extend(toLatLng([v.access.lon, v.access.lat]));
-    map.fitBounds(bounds, { padding: [70, 70], maxZoom: 16 });
-  }
-
-  const marks = edge.markings.length ? escapeHtml(edge.markings.join(" · ")) : "jelzett szakasz";
-  const swatch = `<span class="swatch" style="background:${colour}"></span>`;
-  const ends = endpointsText(fromV, toV);
-  const endsLine = ends ? `<div class="ends">${escapeHtml(ends)}</div>` : "";
-  const access = accessSummary(fromV.access, toV.access);
-  const accessLine = access ? `<div class="access">${escapeHtml(access)}</div>` : "";
-  const wayName = edge.name ? `<div class="wayname">${escapeHtml(edge.name)}</div>` : "";
-  infoEl.innerHTML =
-    `<div class="mark">${swatch}${marks}</div>` +
-    endsLine +
-    `<div class="len">${formatDistance(edge.lengthM)}</div>` +
-    accessLine +
-    wayName;
-
-  const [from, to] = shareEndpoints(edge);
-  mapyEl.href = mapyRouteUrl(from, to);
-  mapyEl.removeAttribute("aria-disabled");
-
-  // Refresh the base so the newly selected segment drops out of it and any
-  // previously selected one returns. (fitBounds will also redraw via moveend.)
-  if (graphRef) drawNetwork(graphRef);
+  tourLayer = L.layerGroup(layers).addTo(map);
 }
+
+function renderPanel(): void {
+  if (tour.length === 0) {
+    infoEl.innerHTML =
+      `<div class="hint">Dobj egyet, vagy kattints a térképen egy szakaszra — így építed fel a túrát.</div>`;
+    return;
+  }
+  const total = totalLengthM(tour, edgesById);
+  const rows = tour
+    .map((id) => {
+      const e = edgesById.get(id);
+      if (!e) return "";
+      const swatch = `<span class="swatch" style="background:${trailColour(e.colours)}"></span>`;
+      const marks = e.markings.length ? escapeHtml(e.markings.join(" · ")) : "jelzett szakasz";
+      const ends = endpointsText(vById.get(e.from) ?? {}, vById.get(e.to) ?? {});
+      const endsLabel = ends ? `<span class="seg-ends">${escapeHtml(ends)}</span>` : "";
+      return (
+        `<li class="seg-row"><span class="seg-main">${swatch}${marks}${endsLabel}</span>` +
+        `<span class="seg-len">${formatDistance(e.lengthM)}</span>` +
+        `<button class="seg-remove" type="button" data-id="${id}" title="Töröld a szakaszt">✕</button></li>`
+      );
+    })
+    .join("");
+  infoEl.innerHTML =
+    `<div class="tour-head"><strong>Túra</strong> · ${tour.length} szakasz · <span class="tour-total">${formatDistance(total)}</span></div>` +
+    `<ul class="seg-list">${rows}</ul>` +
+    `<button class="clear" type="button">Ürítsd a túrát</button>`;
+}
+
+function updateMapy(): void {
+  const url = mapyTripUrl(orderedWaypoints(tour, edgesById, vById));
+  if (url) {
+    mapyEl.href = url;
+    mapyEl.removeAttribute("aria-disabled");
+  } else {
+    mapyEl.removeAttribute("href");
+    mapyEl.setAttribute("aria-disabled", "true");
+  }
+}
+
+function rebuild(): void {
+  drawTour();
+  drawNetwork();
+  renderPanel();
+  updateMapy();
+}
+
+// Panel interactions: remove one segment, or clear the whole túra.
+infoEl.addEventListener("click", (ev) => {
+  const target = ev.target as HTMLElement;
+  const remove = target.closest(".seg-remove") as HTMLElement | null;
+  if (remove) {
+    toggleInTour(Number(remove.dataset.id));
+    return;
+  }
+  if (target.closest(".clear")) {
+    tour = [];
+    rebuild();
+  }
+});
 
 async function init(): Promise<void> {
   const graph = (await fetch(graphUrl).then((r) => r.json())) as SegmentGraph;
   graphRef = graph;
-  const roll = () => selectSegment(pickRandomSegment(graph.edges), graph.vertices, true);
+  for (const e of graph.edges) edgesById.set(e.id, e);
+  for (const v of graph.vertices) vById.set(v.id, v);
+
+  // "Vándor dob" starts a fresh túra from a random seed segment.
+  const roll = () => {
+    const seed = pickRandomSegment(graph.edges);
+    tour = [seed.id];
+    map.fitBounds(L.latLngBounds(latLngsOf(seed)), { padding: [70, 70], maxZoom: 16 });
+    rebuild();
+  };
   rollBtn.addEventListener("click", roll);
-  // Keep the base network in sync with the viewport on pan/zoom.
-  map.on("moveend", () => drawNetwork(graph));
-  roll(); // land on a random segment immediately (also draws the network)
+  map.on("moveend", drawNetwork); // keep the base network in sync on pan/zoom
+  roll();
 }
 
 void init();

@@ -30,6 +30,7 @@ body {
   top: max(1rem, env(safe-area-inset-top));
   left: max(1rem, env(safe-area-inset-left));
   width: min(20rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
   padding: 1rem 1.1rem 1.1rem;
   background: var(--paper);
   border-radius: 14px;
@@ -117,6 +118,95 @@ body {
 .info .hint {
   color: #8a8172;
   font-size: 0.9rem;
+}
+
+/* Túra summary (T7) */
+.info .tour-head {
+  font-size: 1.02rem;
+  color: var(--earth);
+}
+
+.info .tour-total {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.info .seg-list {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  max-height: 42vh;
+  overflow-y: auto;
+}
+
+.info .seg-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0;
+  border-top: 1px solid rgba(40, 30, 15, 0.08);
+}
+
+.info .seg-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.92rem;
+  line-height: 1.2;
+  overflow: hidden;
+}
+
+.info .seg-ends {
+  color: #8a8172;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.info .seg-len {
+  flex: 0 0 auto;
+  color: var(--earth);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.info .seg-remove {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 0.15rem 0.35rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #b06a4a;
+  cursor: pointer;
+}
+
+.info .seg-remove:hover {
+  background: rgba(176, 106, 74, 0.12);
+}
+
+.info .clear {
+  align-self: flex-start;
+  margin-top: 0.5rem;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid rgba(40, 30, 15, 0.18);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--earth);
+  cursor: pointer;
+}
+
+.info .clear:hover {
+  background: rgba(40, 30, 15, 0.06);
 }
 
 .mapy {

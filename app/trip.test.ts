@@ -9,6 +9,7 @@ import {
   endpointsText,
   segmentsInBounds,
   accessSummary,
+  mapyTripUrl,
 } from "./trip.ts";
 import type { Edge } from "../graph/graph.ts";
 
@@ -181,5 +182,25 @@ describe("accessSummary", () => {
   it("handles one end only, and returns null for none", () => {
     expect(accessSummary(ap(19, 47, 500), undefined)).toBe("🅿️ 500 m");
     expect(accessSummary(undefined, undefined)).toBeNull();
+  });
+});
+
+describe("mapyTripUrl", () => {
+  it("returns null for fewer than two points", () => {
+    expect(mapyTripUrl([])).toBeNull();
+    expect(mapyTripUrl([[19, 47]])).toBeNull();
+  });
+
+  it("maps two points to start/end with no waypoints", () => {
+    expect(mapyTripUrl([[19.0, 47.0], [19.1, 47.1]])).toBe(
+      "https://mapy.com/fnc/v1/route?mapset=outdoor&routeType=foot_hiking&start=19,47&end=19.1,47.1",
+    );
+  });
+
+  it("puts the interior points into semicolon-separated waypoints", () => {
+    const url = mapyTripUrl([[19.0, 47.0], [19.1, 47.0], [19.2, 47.0], [19.3, 47.0]]);
+    expect(url).toContain("start=19,47");
+    expect(url).toContain("end=19.3,47");
+    expect(url).toContain("waypoints=19.1,47;19.2,47");
   });
 });

@@ -61,6 +61,24 @@ export function mapyRouteUrl(from: Point, to: Point): string {
   );
 }
 
+/**
+ * Mapy hiking route through an ordered list of points (T7): first = start,
+ * last = end, the rest become `waypoints` (semicolon-separated lon,lat; Mapy
+ * caps at 15). Null for fewer than two points. Mapy routes along trails between
+ * the junctions we hand it.
+ */
+export function mapyTripUrl(points: Point[]): string | null {
+  if (points.length < 2) return null;
+  const fmt = (p: Point) => `${p[0]},${p[1]}`;
+  const start = points[0];
+  const end = points[points.length - 1];
+  const mids = points.slice(1, -1).slice(0, 15);
+  const base =
+    "https://mapy.com/fnc/v1/route?mapset=outdoor&routeType=foot_hiking" +
+    `&start=${fmt(start)}&end=${fmt(end)}`;
+  return mids.length ? `${base}&waypoints=${mids.map(fmt).join(";")}` : base;
+}
+
 // Named-endpoint labels (T4b). A segment endpoint can carry a POI.
 const KIND_ICON: Record<string, string> = {
   peak: "⛰️",

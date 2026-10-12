@@ -66,19 +66,41 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
   0,7 km", deduped when both ends share a lot); fit frames the segment + its
   parking. Deliberately dumb — it points at the car and leaves the approach-trail
   judgment to the turista. `access` filter drops private/no/customers/permit
-  (2053 of 6735 parking excluded); all 804 endpoints got a point. *Next (real
-  planner):* route the approach, out-and-back circuits, transit, optimiser.
+  (2053 of 6735 parking excluded); all 804 endpoints got a point.
 
-- [ ] **T7 · Planner v1 (transit-aware).** Allow start ≠ end when reachable by
+## Manual trip building (current focus — aid the hand, don't route)
+
+- [ ] **T7 · Manual trip builder ("túra").** A *túra* is an (implicitly ordered)
+  collection of segments you assemble by clicking. Build a nice loop by hand,
+  keep every access point visible, and let the turista judge the approach —
+  rather than trusting a router over unmarked/blocked paths. Sub-tasks:
+  - [ ] **T7a · Túra model (pure, tested).** Ordered segment set: toggle
+    add/remove, total distance, and order into a walking sequence (chain segments
+    by shared endpoints) for the Mapy link + the túra's open ends.
+  - [ ] **T7b · Click to add/remove + render.** Clicking a segment toggles its
+    membership; all túra segments drawn highlighted, the rest stay the clickable
+    base network. "Vándor dob" starts a fresh túra from a random seed segment.
+  - [ ] **T7c · Túra summary panel.** List of segments (mark / named endpoints /
+    length), count, total distance (elevation profile later), a clear button.
+  - [ ] **T7d · Access-point choice.** Show the candidate parking for the túra's
+    endpoints; click one to choose it as the start (distinct marker + dashed line
+    to the nearest end); hide the others until it's unselected.
+  - [ ] **T7e · Mapy link for the whole túra.** Route through the ordered segments
+    incl. the chosen access point (park → loop → back). Confirm Mapy's waypoint
+    format.
+  - [ ] *Later:* elevation profile of the túra; URL/hash so a túra is shareable.
+
+## Automatic planner (later)
+
+- [ ] **T8 · Planner (transit-aware).** Allow start ≠ end when reachable by
   bus/cogwheel/chairlift; prefer public transport where sensible.
-
-- [ ] **T8 · Planner v2 (optimiser).** Score candidate itineraries on car duration,
+- [ ] **T9 · Planner (optimiser).** Score candidate itineraries on car duration,
   hike length (~5–10 km), elevation, and awesomeness; return the best.
 
 ## Awesomeness (the black box)
 
-- [ ] **T9 · Metadata layer.** Attach accessibility + user rating fields to segments.
-- [ ] **T10 · AI awesomeness score.** LLM over written reviews/descriptions →
+- [ ] **T10 · Metadata layer.** Attach accessibility + user rating fields to segments.
+- [ ] **T11 · AI awesomeness score.** LLM over written reviews/descriptions →
   per-segment awesomeness score the optimiser reads. The "LEAN proof of awesomestness"
   lives here (show the reasoning/evidence behind the score).
 
