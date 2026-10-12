@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toggleSegment, totalLengthM, orderedWaypoints, tourAccessPoints, encodeTourHash, parseTourHash } from "./tour.ts";
+import { toggleSegment, totalLengthM, tourWalkingLengthM, isRetraceSpur, orderedWaypoints, tourAccessPoints, encodeTourHash, parseTourHash } from "./tour.ts";
 import type { Edge, Vertex } from "../graph/graph.ts";
 
 const v = (id: number, lon: number, lat: number): Vertex => ({ id, osmId: id, lon, lat });
@@ -28,6 +28,23 @@ describe("totalLengthM", () => {
     expect(totalLengthM([1, 2], byId)).toBe(750);
     expect(totalLengthM([], byId)).toBe(0);
     expect(totalLengthM([1, 99], byId)).toBe(300); // unknown id ignored
+  });
+});
+
+describe("tourWalkingLengthM / isRetraceSpur", () => {
+  // chain 0-1-2 plus a spur 1-3 whose tip (vertex 3) is a genuine dead end.
+  const byId = new Map([e(1, 0, 1, 300), e(2, 1, 2, 450), e(3, 1, 3, 200)].map((x) => [x.id, x]));
+  const retrace = new Set([3]);
+
+  it("double-counts the spur, leaves through segments once", () => {
+    expect(tourWalkingLengthM([1, 2], byId, retrace)).toBe(750); // no spur
+    expect(tourWalkingLengthM([1, 2, 3], byId, retrace)).toBe(750 + 400); // 3 walked oda-vissza
+    expect(tourWalkingLengthM([1, 2, 3], byId, new Set())).toBe(950); // no dead ends → plain sum
+  });
+
+  it("flags which segment is the out-and-back spur", () => {
+    expect(isRetraceSpur(3, byId, retrace)).toBe(true);
+    expect(isRetraceSpur(1, byId, retrace)).toBe(false);
   });
 });
 

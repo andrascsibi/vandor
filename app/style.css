@@ -173,6 +173,13 @@ body {
   text-overflow: ellipsis;
 }
 
+.info .seg-spur {
+  flex: 0 0 auto;
+  color: #b06a4a;
+  font-weight: 700;
+  cursor: help;
+}
+
 .info .seg-len {
   flex: 0 0 auto;
   color: var(--earth);

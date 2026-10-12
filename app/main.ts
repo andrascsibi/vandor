@@ -4,7 +4,7 @@ import * as L from "leaflet";
 import graphUrl from "../data/segments.json?url";
 import type { Edge, SegmentGraph, Vertex } from "../graph/graph.ts";
 import { haversine } from "../graph/graph.ts";
-import { SZELL_KALMAN_TER } from "../ingest/overpass.ts";
+import { SZELL_KALMAN_TER, RANGE_RADIUS_M } from "../ingest/overpass.ts";
 import {
   pickRandomSegment,
   formatDistance,
@@ -18,12 +18,15 @@ import {
 import {
   toggleSegment,
   totalLengthM,
+  tourWalkingLengthM,
+  isRetraceSpur,
   orderedWaypoints,
   tourAccessPoints,
   encodeTourHash,
   parseTourHash,
   type AccessCandidate,
 } from "./tour.ts";
+import { deadEndVertices } from "./router.ts";
 
 // Crow-flies km from the chosen parking back to the hardcoded start.
 const SZELL: [number, number] = [SZELL_KALMAN_TER[0], SZELL_KALMAN_TER[1]];
@@ -76,6 +79,9 @@ let chosenAccess: AccessCandidate | null = null; // the picked start parking
 let graphRef: SegmentGraph | null = null;
 const edgesById = new Map<number, Edge>();
 const vById = new Map<number, Vertex>();
+// Genuine dead ends (summits / trail termini) you must retrace out-and-back —
+// interior degree-1 vertices; map-boundary stubs (trail leaves our view) excluded.
+let retraceVertices = new Set<number>();
 
 const latLngsOf = (edge: Edge) => edge.coordinates.map(toLatLng);
 
@@ -207,7 +213,8 @@ function renderPanel(cands: AccessCandidate[]): void {
       `<div class="hint">Dobj egyet, vagy kattints a térképen egy szakaszra — így építed fel a túrát.</div>`;
     return;
   }
-  const total = totalLengthM(tour, edgesById);
+  const oneWay = totalLengthM(tour, edgesById);
+  const walking = tourWalkingLengthM(tour, edgesById, retraceVertices);
   const rows = tour
     .map((id) => {
       const e = edgesById.get(id);
@@ -216,8 +223,11 @@ function renderPanel(cands: AccessCandidate[]): void {
       const marks = e.markings.length ? escapeHtml(e.markings.join(" · ")) : "jelzett szakasz";
       const ends = endpointsText(vById.get(e.from) ?? {}, vById.get(e.to) ?? {});
       const endsLabel = ends ? `<span class="seg-ends">${escapeHtml(ends)}</span>` : "";
+      const spur = isRetraceSpur(id, edgesById, retraceVertices)
+        ? `<span class="seg-spur" title="Zsákutca — oda-vissza, kétszer számít">↩</span>`
+        : "";
       return (
-        `<li class="seg-row"><span class="seg-main">${swatch}${marks}${endsLabel}</span>` +
+        `<li class="seg-row"><span class="seg-main">${swatch}${marks}${endsLabel}${spur}</span>` +
         `<span class="seg-len">${formatDistance(e.lengthM)}</span>` +
         `<button class="seg-remove" type="button" data-id="${id}" title="Töröld a szakaszt">✕</button></li>`
       );
@@ -233,8 +243,15 @@ function renderPanel(cands: AccessCandidate[]): void {
   } else if (cands.length) {
     accessLine = `<div class="access">🅿️ Válassz indulási parkolót a térképen (${cands.length})</div>`;
   }
+  // Headline the real walking distance; note the oda-vissza extra when a spur
+  // makes it exceed the one-way sum of the segments.
+  const odaVissza =
+    walking > oneWay
+      ? `<div class="access sub">↩ zsákutcával oda-vissza · +${escapeHtml(formatDistance(walking - oneWay))}</div>`
+      : "";
   infoEl.innerHTML =
-    `<div class="tour-head"><strong>Túra</strong> · ${tour.length} szakasz · <span class="tour-total">${formatDistance(total)}</span></div>` +
+    `<div class="tour-head"><strong>Túra</strong> · ${tour.length} szakasz · <span class="tour-total">${formatDistance(walking)}</span></div>` +
+    odaVissza +
     `<ul class="seg-list">${rows}</ul>` +
     accessLine +
     `<button class="clear" type="button">Ürítsd a túrát</button>`;
@@ -304,6 +321,15 @@ async function init(): Promise<void> {
   graphRef = graph;
   for (const e of graph.edges) edgesById.set(e.id, e);
   for (const v of graph.vertices) vById.set(v.id, v);
+
+  // A dead end you must retrace is an interior degree-1 vertex; a stub sitting on
+  // the ~20 km range boundary is just the trail leaving our map, not a terminus.
+  retraceVertices = new Set(
+    [...deadEndVertices(graph.edges)].filter((vid) => {
+      const v = vById.get(vid);
+      return v && haversine([v.lon, v.lat], SZELL) < RANGE_RADIUS_M - 500;
+    }),
+  );
 
   // "Vándor dob" starts a fresh túra from a random seed segment.
   const roll = () => {

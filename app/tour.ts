@@ -13,11 +13,44 @@ export function toggleSegment(ids: number[], id: number): number[] {
   return ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
 }
 
-/** Summed length of the túra's segments, metres. */
+/** Summed length of the túra's segments, metres (each counted once). */
 export function totalLengthM(ids: number[], byId: Map<number, Edge>): number {
   let sum = 0;
   for (const id of ids) sum += byId.get(id)?.lengthM ?? 0;
   return sum;
+}
+
+/**
+ * Walking distance of the túra, metres: every segment once, plus once more for a
+ * spur you must retrace — a segment touching a genuine dead end (a summit or
+ * trail terminus you walk out to and back, "oda-vissza"). `retraceVertices` is
+ * the set of such dead-end vertices (interior degree-1 vertices; map-boundary
+ * stubs are excluded upstream, since there the trail only leaves our view). Equal
+ * to `totalLengthM` when the túra has no spur.
+ */
+export function tourWalkingLengthM(
+  ids: number[],
+  byId: Map<number, Edge>,
+  retraceVertices: Set<number>,
+): number {
+  let sum = 0;
+  for (const id of ids) {
+    const e = byId.get(id);
+    if (!e) continue;
+    sum += e.lengthM;
+    if (retraceVertices.has(e.from) || retraceVertices.has(e.to)) sum += e.lengthM;
+  }
+  return sum;
+}
+
+/** True if the segment touches a dead end you must retrace (an out-and-back spur). */
+export function isRetraceSpur(
+  id: number,
+  byId: Map<number, Edge>,
+  retraceVertices: Set<number>,
+): boolean {
+  const e = byId.get(id);
+  return !!e && (retraceVertices.has(e.from) || retraceVertices.has(e.to));
 }
 
 /** A candidate parking for the túra (T7d): a lot + where to walk in from. */
