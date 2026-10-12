@@ -221,6 +221,46 @@ body {
   background: rgba(40, 30, 15, 0.06);
 }
 
+/* Discontinuity warning + the gap-fill action (T-router). */
+.info .warn {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+  color: #8a5a1a;
+  background: #fbf1dd;
+  border: 1px solid #ecd9ad;
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+}
+
+.info .fill-gap,
+.info .close-loop {
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.32rem 0.6rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--trail);
+  color: #fff;
+  cursor: pointer;
+}
+
+.info .fill-gap:hover,
+.info .close-loop:hover {
+  filter: brightness(1.06);
+}
+
+/* "Close the loop" sits as a full-width action under the segment list. */
+.info .close-loop {
+  align-self: stretch;
+  margin-top: 0.1rem;
+  padding: 0.5rem 0.6rem;
+  background: #2f7d4f;
+}
+
 .mapy {
   color: var(--trail);
   font-weight: 600;

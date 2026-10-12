@@ -26,7 +26,13 @@ import {
   parseTourHash,
   type AccessCandidate,
 } from "./tour.ts";
-import { deadEndVertices } from "./router.ts";
+import {
+  buildRouteGraph,
+  deadEndVertices,
+  tourComponents,
+  fillTourGaps,
+  type RouteGraph,
+} from "./router.ts";
 
 // Crow-flies km from the chosen parking back to the hardcoded start.
 const SZELL: [number, number] = [SZELL_KALMAN_TER[0], SZELL_KALMAN_TER[1]];
@@ -82,6 +88,9 @@ const vById = new Map<number, Vertex>();
 // Genuine dead ends (summits / trail termini) you must retrace out-and-back —
 // interior degree-1 vertices; map-boundary stubs (trail leaves our view) excluded.
 let retraceVertices = new Set<number>();
+// The routing substrate (proto-planner): full-graph adjacency + all dead ends.
+let routeGraph: RouteGraph | null = null;
+let allDeadEnds = new Set<number>();
 
 const latLngsOf = (edge: Edge) => edge.coordinates.map(toLatLng);
 
@@ -249,9 +258,18 @@ function renderPanel(cands: AccessCandidate[]): void {
     walking > oneWay
       ? `<div class="access sub">↩ zsákutcával oda-vissza · +${escapeHtml(formatDistance(walking - oneWay))}</div>`
       : "";
+  // Discontinuity: the túra is in several disconnected pieces. Warn + offer to
+  // route the missing trail between them (the proto-planner).
+  const pieces = tourComponents(tour, edgesById).length;
+  const warnLine =
+    pieces > 1
+      ? `<div class="warn">⚠️ Nem összefüggő túra · ${pieces} külön rész` +
+        `<button class="fill-gap" type="button">Töltsd ki a hézagot ↝</button></div>`
+      : "";
   infoEl.innerHTML =
     `<div class="tour-head"><strong>Túra</strong> · ${tour.length} szakasz · <span class="tour-total">${formatDistance(walking)}</span></div>` +
     odaVissza +
+    warnLine +
     `<ul class="seg-list">${rows}</ul>` +
     accessLine +
     `<button class="clear" type="button">Ürítsd a túrát</button>`;
@@ -287,6 +305,20 @@ function syncHash(): void {
   history.replaceState(null, "", body ? `#${body}` : location.pathname + location.search);
 }
 
+// Frame the whole túra (plus its chosen start, or all access candidates).
+function fitTour(): void {
+  const pts: L.LatLngTuple[] = [];
+  for (const id of tour) {
+    const e = edgesById.get(id);
+    if (e) pts.push(...latLngsOf(e));
+  }
+  if (!pts.length) return;
+  const bounds = L.latLngBounds(pts);
+  if (chosenAccess) bounds.extend(toLatLng([chosenAccess.lon, chosenAccess.lat]));
+  else for (const c of tourAccessPoints(tour, edgesById, vById)) bounds.extend(toLatLng([c.lon, c.lat]));
+  map.fitBounds(bounds, { padding: [70, 70], maxZoom: 16 });
+}
+
 function rebuild(): void {
   const cands = tourAccessPoints(tour, edgesById, vById);
   // Drop the chosen start if the túra changed so it's no longer a candidate.
@@ -309,6 +341,17 @@ infoEl.addEventListener("click", (ev) => {
     toggleInTour(Number(remove.dataset.id));
     return;
   }
+  if (target.closest(".fill-gap")) {
+    if (routeGraph) {
+      const added = fillTourGaps(tour, edgesById, routeGraph);
+      if (added.length) {
+        tour = [...tour, ...added];
+        rebuild();
+        fitTour();
+      }
+    }
+    return;
+  }
   if (target.closest(".clear")) {
     tour = [];
     chosenAccess = null;
@@ -322,10 +365,12 @@ async function init(): Promise<void> {
   for (const e of graph.edges) edgesById.set(e.id, e);
   for (const v of graph.vertices) vById.set(v.id, v);
 
+  routeGraph = buildRouteGraph(graph.edges);
+  allDeadEnds = deadEndVertices(graph.edges);
   // A dead end you must retrace is an interior degree-1 vertex; a stub sitting on
   // the ~20 km range boundary is just the trail leaving our map, not a terminus.
   retraceVertices = new Set(
-    [...deadEndVertices(graph.edges)].filter((vid) => {
+    [...allDeadEnds].filter((vid) => {
       const v = vById.get(vid);
       return v && haversine([v.lon, v.lat], SZELL) < RANGE_RADIUS_M - 500;
     }),
@@ -336,10 +381,8 @@ async function init(): Promise<void> {
     const seed = pickRandomSegment(graph.edges);
     tour = [seed.id];
     chosenAccess = null;
-    const bounds = L.latLngBounds(latLngsOf(seed));
-    for (const c of tourAccessPoints(tour, edgesById, vById)) bounds.extend(toLatLng([c.lon, c.lat]));
-    map.fitBounds(bounds, { padding: [70, 70], maxZoom: 16 });
     rebuild();
+    fitTour();
   };
 
   // Restore a shared túra from the URL hash; returns false if there's nothing valid.
@@ -354,10 +397,8 @@ async function init(): Promise<void> {
       chosenAccess =
         cands.find((c) => Math.abs(c.lon - access[0]) < 1e-6 && Math.abs(c.lat - access[1]) < 1e-6) ?? null;
     }
-    const bounds = L.latLngBounds(tour.flatMap((id) => latLngsOf(edgesById.get(id)!)));
-    if (chosenAccess) bounds.extend(toLatLng([chosenAccess.lon, chosenAccess.lat]));
-    map.fitBounds(bounds, { padding: [70, 70], maxZoom: 16 });
     rebuild();
+    fitTour();
     return true;
   };
 
