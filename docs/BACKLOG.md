@@ -135,6 +135,24 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
     total once a start is chosen; let close-the-loop prefer the nearest live ends
     to the parking; multi-leg loops when the túra forks.
 
+- [x] **T7l · "Az út a cél" — closed-walk planner (`app/walk.ts`).** Rebuilt the
+  túra→walk derivation on one model: a car túra is a **closed walk returning to its
+  start vertex**, so segment duplication is a property of the *túra subgraph* (its
+  odd-degree vertices → Chinese-Postman T-join, via `tJoinEdges`), not of the whole
+  network. `planWalk` replaces `orderedWaypoints`/`orderedSegments`/
+  `tourWalkingLengthM`/`isRetraceSpur` and the global `retraceVertices`: **linear**
+  (no duplication) while no parking is chosen — so "Vándor dob" on one segment
+  doesn't auto-double — and a **closed Euler circuit** (Hierholzer) from the túra
+  vertex nearest the car once a parking fixes start = end. Fixes three bugs: (1) a
+  loop+spur no longer starts at the dead-end tip; (2) a spur that's a through-trail
+  in the network (e.g. 463 "Schüller út") but degree-1 *within the túra* is now
+  doubled + flagged; (3) doubled segments show as **two rows** (return flagged ↩),
+  which also handles figure-8 / dumbbell retraces that repeat a segment
+  non-adjacently. Forward-compatible with transit access (start ≠ end). Also fixed
+  **Mapy truncation**: `mapyTripUrl` now *evenly subsamples* a long trip to ≤15
+  waypoints (`subsampleEvenly`) instead of keeping only the first 15. 10 new
+  `walk.test.ts` specs; 110 tests green.
+
 ## Automatic planner (later)
 
 - [ ] **T8 · Planner (transit-aware).** Allow start ≠ end when reachable by

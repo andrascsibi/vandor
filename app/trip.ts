@@ -61,18 +61,37 @@ export function mapyRouteUrl(from: Point, to: Point): string {
   );
 }
 
+/** Mapy's waypoint cap (start + end excluded): the route may carry at most this. */
+const MAPY_MAX_WAYPOINTS = 15;
+
+/**
+ * Evenly thin a list down to at most `max` items, always keeping the first and
+ * last. Picks indices on an even stride so the sampled points still trace the
+ * whole shape — used so a long túra isn't truncated to its first stretch.
+ */
+export function subsampleEvenly<T>(items: T[], max: number): T[] {
+  if (items.length <= max) return items;
+  if (max <= 1) return items.slice(0, max);
+  const out: T[] = [];
+  for (let i = 0; i < max; i++) {
+    out.push(items[Math.round((i * (items.length - 1)) / (max - 1))]);
+  }
+  return out;
+}
+
 /**
  * Mapy hiking route through an ordered list of points (T7): first = start,
- * last = end, the rest become `waypoints` (semicolon-separated lon,lat; Mapy
- * caps at 15). Null for fewer than two points. Mapy routes along trails between
- * the junctions we hand it.
+ * last = end, the rest become `waypoints` (semicolon-separated lon,lat). Mapy caps
+ * waypoints at 15, so a longer trip is *evenly subsampled* (not truncated) — Mapy
+ * reconstructs a route close to the real one between the sampled junctions. Null
+ * for fewer than two points.
  */
 export function mapyTripUrl(points: Point[]): string | null {
   if (points.length < 2) return null;
   const fmt = (p: Point) => `${p[0]},${p[1]}`;
   const start = points[0];
   const end = points[points.length - 1];
-  const mids = points.slice(1, -1).slice(0, 15);
+  const mids = subsampleEvenly(points.slice(1, -1), MAPY_MAX_WAYPOINTS);
   const base =
     "https://mapy.com/fnc/v1/route?mapset=outdoor&routeType=foot_hiking" +
     `&start=${fmt(start)}&end=${fmt(end)}`;

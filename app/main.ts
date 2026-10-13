@@ -4,7 +4,7 @@ import * as L from "leaflet";
 import graphUrl from "../data/segments.json?url";
 import type { Edge, SegmentGraph, Vertex } from "../graph/graph.ts";
 import { haversine } from "../graph/graph.ts";
-import { SZELL_KALMAN_TER, RANGE_RADIUS_M } from "../ingest/overpass.ts";
+import { SZELL_KALMAN_TER } from "../ingest/overpass.ts";
 import {
   pickRandomSegment,
   formatDistance,
@@ -18,15 +18,12 @@ import {
 import {
   toggleSegment,
   totalLengthM,
-  tourWalkingLengthM,
-  isRetraceSpur,
-  orderedWaypoints,
-  orderedSegments,
   tourAccessPoints,
   encodeTourHash,
   parseTourHash,
   type AccessCandidate,
 } from "./tour.ts";
+import { planWalk, type TourWalk } from "./walk.ts";
 import {
   buildRouteGraph,
   deadEndVertices,
@@ -91,9 +88,9 @@ let chosenAccess: AccessCandidate | null = null; // the picked start parking
 let graphRef: SegmentGraph | null = null;
 const edgesById = new Map<number, Edge>();
 const vById = new Map<number, Vertex>();
-// Genuine dead ends (summits / trail termini) you must retrace out-and-back —
-// interior degree-1 vertices; map-boundary stubs (trail leaves our view) excluded.
-let retraceVertices = new Set<number>();
+// How the current túra is walked (ordering + any doubled segments); recomputed by
+// `rebuild`. Closed (returns to the car) once a parking is chosen, else linear.
+let walk: TourWalk = { steps: [], coords: [], lengthM: 0, closed: false };
 // The routing substrate (proto-planner): full-graph adjacency + all dead ends.
 let routeGraph: RouteGraph | null = null;
 let allDeadEnds = new Set<number>();
@@ -246,17 +243,22 @@ function renderPanel(cands: AccessCandidate[]): void {
     return;
   }
   const oneWay = totalLengthM(tour, edgesById);
-  const walking = tourWalkingLengthM(tour, edgesById, retraceVertices);
-  const rows = tour
-    .map((id) => {
+  const walking = walk.lengthM;
+  // One row per *traversal* (walking order): a doubled segment appears twice, the
+  // second time flagged ↩ as the return leg. The ✕ drops the segment entirely.
+  const seenStep = new Set<number>();
+  const rows = walk.steps
+    .map(({ id }) => {
       const e = edgesById.get(id);
       if (!e) return "";
+      const isReturn = seenStep.has(id);
+      seenStep.add(id);
       const swatch = `<span class="swatch" style="background:${trailColour(e.colours)}"></span>`;
       const marks = e.markings.length ? escapeHtml(e.markings.join(" · ")) : "jelzett szakasz";
       const ends = endpointsText(vById.get(e.from) ?? {}, vById.get(e.to) ?? {});
       const endsLabel = ends ? `<span class="seg-ends">${escapeHtml(ends)}</span>` : "";
-      const spur = isRetraceSpur(id, edgesById, retraceVertices)
-        ? `<span class="seg-spur" title="Zsákutca — oda-vissza, kétszer számít">↩</span>`
+      const spur = isReturn
+        ? `<span class="seg-spur" title="Oda-vissza — ezt a szakaszt visszafelé is járod">↩</span>`
         : "";
       return (
         `<li class="seg-row" data-id="${id}"><span class="seg-main">${swatch}${marks}${endsLabel}</span>` +
@@ -276,11 +278,11 @@ function renderPanel(cands: AccessCandidate[]): void {
   } else if (cands.length) {
     accessLine = `<div class="access">🅿️ Válassz indulási parkolót a térképen (${cands.length})</div>`;
   }
-  // Headline the real walking distance; note the oda-vissza extra when a spur
-  // makes it exceed the one-way sum of the segments.
+  // Headline the real walking distance; note the oda-vissza extra when closing the
+  // loop back to the car makes it exceed the one-way sum of the segments.
   const odaVissza =
     walking > oneWay
-      ? `<div class="access sub">↩ zsákutcával oda-vissza · +${escapeHtml(formatDistance(walking - oneWay))}</div>`
+      ? `<div class="access sub">↩ oda-vissza · +${escapeHtml(formatDistance(walking - oneWay))}</div>`
       : "";
   // Discontinuity: the túra is in several disconnected pieces. Warn + offer to
   // route the missing trail between them (the proto-planner).
@@ -314,11 +316,11 @@ function renderPanel(cands: AccessCandidate[]): void {
 }
 
 function updateLinks(): void {
-  // With a chosen start, route park → túra → back to the car, and bias the
-  // walking order to begin at the túra end nearest the car.
+  // The walk already runs in order (and, with a parking, closes back to the start
+  // vertex). With a chosen start we bookend it with the car so Mapy routes
+  // park → túra → park; the two park legs are just the approach in and out.
   const chosen = chosenAccess ? ([chosenAccess.lon, chosenAccess.lat] as [number, number]) : null;
-  const wp = orderedWaypoints(tour, edgesById, vById, chosen ?? undefined);
-  const points = chosen ? [chosen, ...wp, chosen] : wp;
+  const points = chosen ? [chosen, ...walk.coords, chosen] : walk.coords;
   const mapyUrl = mapyTripUrl(points);
   if (mapyUrl) {
     mapyEl.href = mapyUrl;
@@ -364,10 +366,11 @@ function rebuild(): void {
   if (chosenAccess && !cands.some((c) => c.lon === chosenAccess!.lon && c.lat === chosenAccess!.lat)) {
     chosenAccess = null;
   }
-  // Keep the segments in walking order (start → finish, from the chosen parking
-  // when there is one), so the panel list and shared hash read in sequence.
+  // Plan the walk: linear while no parking is chosen, a closed loop (returning to
+  // the car) once one is — doubling whatever must be retraced. The panel list, the
+  // headline distance and the Mapy link all read off this.
   const startPt = chosenAccess ? ([chosenAccess.lon, chosenAccess.lat] as [number, number]) : undefined;
-  tour = orderedSegments(tour, edgesById, vById, startPt);
+  walk = planWalk(tour, edgesById, vById, { start: startPt, close: !!chosenAccess });
   drawTour();
   drawNetwork();
   drawAccess(cands);
@@ -451,14 +454,6 @@ async function init(): Promise<void> {
 
   routeGraph = buildRouteGraph(graph.edges);
   allDeadEnds = deadEndVertices(graph.edges);
-  // A dead end you must retrace is an interior degree-1 vertex; a stub sitting on
-  // the ~20 km range boundary is just the trail leaving our map, not a terminus.
-  retraceVertices = new Set(
-    [...allDeadEnds].filter((vid) => {
-      const v = vById.get(vid);
-      return v && haversine([v.lon, v.lat], SZELL) < RANGE_RADIUS_M - 500;
-    }),
-  );
 
   // "Vándor dob" starts a fresh túra from a random seed segment.
   const roll = () => {

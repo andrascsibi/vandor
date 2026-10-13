@@ -10,6 +10,7 @@ import {
   segmentsInBounds,
   accessSummary,
   mapyTripUrl,
+  subsampleEvenly,
 } from "./trip.ts";
 import type { Edge } from "../graph/graph.ts";
 
@@ -202,5 +203,29 @@ describe("mapyTripUrl", () => {
     expect(url).toContain("start=19,47");
     expect(url).toContain("end=19.3,47");
     expect(url).toContain("waypoints=19.1,47;19.2,47");
+  });
+
+  it("evenly subsamples a long trip to 15 waypoints spanning the whole route", () => {
+    // 2 + 30 interior + end = 32 points; interior must thin to 15, not truncate.
+    const pts: [number, number][] = Array.from({ length: 32 }, (_, i) => [19 + i / 100, 47]);
+    const url = mapyTripUrl(pts)!;
+    const wps = url.split("waypoints=")[1].split(";");
+    expect(wps).toHaveLength(15);
+    expect(wps[0]).toBe("19.01,47"); // first interior point kept
+    expect(wps[14]).toBe("19.3,47"); // last interior point kept (not dropped)
+    expect(url).toContain("end=19.31,47"); // true end survives
+  });
+});
+
+describe("subsampleEvenly", () => {
+  it("returns the list unchanged when already within the cap", () => {
+    expect(subsampleEvenly([1, 2, 3], 5)).toEqual([1, 2, 3]);
+  });
+
+  it("thins to the cap, always keeping the first and last", () => {
+    const out = subsampleEvenly([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], 4);
+    expect(out).toHaveLength(4);
+    expect(out[0]).toBe(0);
+    expect(out[out.length - 1]).toBe(9);
   });
 });

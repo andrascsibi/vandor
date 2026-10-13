@@ -1,9 +1,8 @@
-// Pure model for a *túra* (T7): an implicitly-ordered collection of segments the
-// user assembles by clicking. No DOM, no Leaflet — unit-testable. The app holds
-// the túra as an ordered list of edge ids (insertion order); these helpers do
-// membership, totals, and ordering the segments into a walking sequence for the
-// Mapy link + to find the túra's open ends.
-import { haversine, type Edge, type Vertex } from "../graph/graph.ts";
+// Pure model for a *túra* (T7): a set of segments the user assembles by clicking,
+// held as an insertion-ordered list of edge ids. No DOM, no Leaflet — unit-testable.
+// These helpers do membership, totals, candidate parking, and hash round-tripping.
+// How the set is actually *walked* (ordering + duplication) lives in `walk.ts`.
+import { type Edge, type Vertex } from "../graph/graph.ts";
 
 /** [lon, lat] — the project's GeoJSON coordinate order. */
 export type Point = [number, number];
@@ -18,39 +17,6 @@ export function totalLengthM(ids: number[], byId: Map<number, Edge>): number {
   let sum = 0;
   for (const id of ids) sum += byId.get(id)?.lengthM ?? 0;
   return sum;
-}
-
-/**
- * Walking distance of the túra, metres: every segment once, plus once more for a
- * spur you must retrace — a segment touching a genuine dead end (a summit or
- * trail terminus you walk out to and back, "oda-vissza"). `retraceVertices` is
- * the set of such dead-end vertices (interior degree-1 vertices; map-boundary
- * stubs are excluded upstream, since there the trail only leaves our view). Equal
- * to `totalLengthM` when the túra has no spur.
- */
-export function tourWalkingLengthM(
-  ids: number[],
-  byId: Map<number, Edge>,
-  retraceVertices: Set<number>,
-): number {
-  let sum = 0;
-  for (const id of ids) {
-    const e = byId.get(id);
-    if (!e) continue;
-    sum += e.lengthM;
-    if (retraceVertices.has(e.from) || retraceVertices.has(e.to)) sum += e.lengthM;
-  }
-  return sum;
-}
-
-/** True if the segment touches a dead end you must retrace (an out-and-back spur). */
-export function isRetraceSpur(
-  id: number,
-  byId: Map<number, Edge>,
-  retraceVertices: Set<number>,
-): boolean {
-  const e = byId.get(id);
-  return !!e && (retraceVertices.has(e.from) || retraceVertices.has(e.to));
 }
 
 /** A candidate parking for the túra (T7d): a lot + where to walk in from. */
@@ -119,125 +85,4 @@ export function parseTourHash(hash: string): { ids: number[]; access: [number, n
     if (Number.isFinite(lon) && Number.isFinite(lat)) access = [lon, lat];
   }
   return { ids, access };
-}
-
-interface Link {
-  edgeId: number;
-  other: number;
-}
-
-/**
- * Walk the túra into a single sequence: greedy chain starting at an open end (a
- * vertex used by exactly one túra segment) if there is one, else any vertex;
- * follow unused segments, sharing vertices. When the walk dead-ends with segments
- * left (a disconnected or branching túra) it jumps to a remaining segment — a gap
- * the Mapy route spans. `preferredStart` (the chosen parking, when there is one)
- * biases the start: begin at the vertex nearest the car. Returns both the segment
- * ids in walk order and the endpoint-vertex coords, so the panel list and the
- * Mapy link stay in the same sequence. Self-loop segments are skipped here and
- * reattached by `orderedSegments`.
- */
-function walkTour(
-  ids: number[],
-  byId: Map<number, Edge>,
-  vById: Map<number, Vertex>,
-  preferredStart?: Point,
-): { order: number[]; coords: Point[] } {
-  const edges = ids.map((id) => byId.get(id)).filter((e): e is Edge => !!e && e.from !== e.to);
-  if (edges.length === 0) return { order: [], coords: [] };
-
-  const adj = new Map<number, Link[]>();
-  const addLink = (v: number, link: Link) => {
-    const list = adj.get(v);
-    if (list) list.push(link);
-    else adj.set(v, [link]);
-  };
-  for (const e of edges) {
-    addLink(e.from, { edgeId: e.id, other: e.to });
-    addLink(e.to, { edgeId: e.id, other: e.from });
-  }
-
-  const coord = (v: number): Point => {
-    const vx = vById.get(v)!;
-    return [vx.lon, vx.lat];
-  };
-
-  // Choose the chain's start. The candidate starts are the open ends (vertices
-  // used by exactly one túra segment); if there are none (a closed loop) any
-  // vertex will do. With a preferred start (the chosen parking) pick the
-  // candidate nearest it, so the route leaves from the end closest to the car.
-  const openEnds: number[] = [];
-  for (const [v, links] of adj) if (links.length === 1) openEnds.push(v);
-  const candidates = openEnds.length ? openEnds : [...adj.keys()];
-  let start = candidates[0] ?? edges[0].from;
-  if (preferredStart) {
-    let best = Infinity;
-    for (const v of candidates) {
-      const d = haversine(coord(v), preferredStart);
-      if (d < best) {
-        best = d;
-        start = v;
-      }
-    }
-  }
-  const usedEdges = new Set<number>();
-  const order: number[] = [];
-  const coords: Point[] = [coord(start)];
-  let cur = start;
-
-  while (usedEdges.size < edges.length) {
-    const next = adj.get(cur)?.find((l) => !usedEdges.has(l.edgeId));
-    if (next) {
-      usedEdges.add(next.edgeId);
-      order.push(next.edgeId);
-      cur = next.other;
-      coords.push(coord(cur));
-    } else {
-      // Dead end with segments left: jump to a remaining segment.
-      const left = edges.find((e) => !usedEdges.has(e.id))!;
-      usedEdges.add(left.id);
-      order.push(left.id);
-      coords.push(coord(left.from));
-      cur = left.to;
-      coords.push(coord(cur));
-    }
-  }
-  return { order, coords };
-}
-
-/**
- * The túra's endpoint-vertex coordinates in walking order — the junctions the
- * Mapy share link routes through. See `walkTour`.
- */
-export function orderedWaypoints(
-  ids: number[],
-  byId: Map<number, Edge>,
-  vById: Map<number, Vertex>,
-  preferredStart?: Point,
-): Point[] {
-  return walkTour(ids, byId, vById, preferredStart).coords;
-}
-
-/**
- * The túra's segment ids re-sequenced into walking order (same chain `walkTour`
- * gives the Mapy link), so the panel list reads start → finish instead of click
- * order. A permutation of the input: any ids the walk can't place — self-loops,
- * unknown ids — are appended, so nothing is dropped.
- */
-export function orderedSegments(
-  ids: number[],
-  byId: Map<number, Edge>,
-  vById: Map<number, Vertex>,
-  preferredStart?: Point,
-): number[] {
-  const { order } = walkTour(ids, byId, vById, preferredStart);
-  const placed = new Set(order);
-  const result = [...order];
-  for (const id of ids) {
-    if (!placed.has(id)) {
-      placed.add(id);
-      result.push(id);
-    }
-  }
-  return result;
 }
