@@ -160,7 +160,34 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
 - [ ] **T9 · Planner (optimiser).** Score candidate itineraries on car duration,
   hike length (~5–10 km), elevation, and awesomeness; return the best.
 
-## Awesomeness (the black box)
+## Awesomeness — underfoot surface (current focus)
+
+See [AWESOMENESS-SURFACE.md](AWESOMENESS-SURFACE.md) for the full research: surface
+is two axes — **underfoot** (what you walk *on*, from the `highway` tag, which we
+already have) and **surroundings** (forest/field/urban, needs a landcover spatial
+join). We start with underfoot because the data is already in the graph.
+
+- [ ] **T10a · Underfoot surface class + at-a-glance emphasis (NEXT UP).** Derive a
+  pure `surfaceClass ∈ {trail, paved, road}` from each segment's `highway` tag
+  (trail = track/path/footway/steps/cycleway/bridleway; paved = residential/
+  living_street/pedestrian/service/unclassified; road = secondary/tertiary/primary/
+  trunk). *Product:* **the explorer reads at a glance for route planning** —
+  natural-trail segments drawn emphasised (full weight/opacity), paved segments
+  de-emphasised (thinner / faded / dashed), motor-road segments de-emphasised the
+  **most** (faintest). Plus: **"Vándor dob" only seeds from natural trails** (filter
+  the random pick to `surfaceClass === "trail"`). *Testable:* pure
+  `surfaceClass(highway)` unit tests + the ~67/27/6 %km split (natural/paved/road)
+  from the research; random pick never returns a paved/road seed.
+  - Implementation notes: `surfaceClass` is a pure helper (new in `app/trip.ts` or
+    a small `app/surface.ts`), no re-ingest needed — `edges[].highway` is present.
+    Emphasis applies in `drawNetwork()` ([app/main.ts](../app/main.ts)) via the
+    base-layer style (weight/opacity/dashArray) keyed on `surfaceClass`; keep the
+    waymark colour, vary only the visual weight so colour still reads. The túra
+    highlight + selected styling stay as-is. Filter the roll in `roll()` /
+    `pickRandomSegment`.
+  - Later (T10b–d, see research doc): `attach-landcover.ts` forest/field/urban
+    spatial join (handle multipolygon **relations**), `besideTraffic` proximity
+    flag, persist `surface`/`tracktype`.
 
 - [ ] **T10 · Metadata layer.** Attach accessibility + user rating fields to segments.
 - [ ] **T11 · AI awesomeness score.** LLM over written reviews/descriptions →
