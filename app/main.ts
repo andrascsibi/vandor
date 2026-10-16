@@ -24,6 +24,7 @@ import {
   type AccessCandidate,
 } from "./tour.ts";
 import { planWalk, type TourWalk } from "./walk.ts";
+import { surfaceClass, trailFraction, type SurfaceClass } from "./surface.ts";
 import {
   buildRouteGraph,
   deadEndVertices,
@@ -76,6 +77,26 @@ const toLatLng = ([lon, lat]: [number, number]): L.LatLngTuple => [lat, lon];
 const BASE_WEIGHT = 3.5;
 const BASE_OPACITY = 0.85;
 
+// At-a-glance underfoot emphasis in the base network (T10a). Keep the waymark
+// colour (it still reads the trail's route), full line weight and full opacity;
+// vary only the dash pattern so a natural trail reads as solid, settlement paving
+// as dashed, and motor road as dotted — fading as well made them vanish where a
+// route coincides with a map path. Hover overrides to a bold solid line.
+const SURFACE_STYLE: Record<SurfaceClass, { weight: number; opacity: number; dashArray?: string }> = {
+  trail: { weight: BASE_WEIGHT, opacity: BASE_OPACITY },
+  paved: { weight: BASE_WEIGHT, opacity: BASE_OPACITY, dashArray: "6 5" },
+  road: { weight: BASE_WEIGHT, opacity: BASE_OPACITY, dashArray: "1 4" },
+};
+
+// The túra highlight is a thicker line (weight 6) with round caps that fatten each
+// dash, so the base patterns above mash into a near-solid line. These sparser
+// patterns keep clear dashes/dots on the highlight so the paved share stays legible.
+const HIGHLIGHT_DASH: Record<SurfaceClass, string | undefined> = {
+  trail: undefined,
+  paved: "10 14",
+  road: "1 14",
+};
+
 // A túra (T7) is an ordered list of edge ids the user assembles by clicking.
 let network: L.LayerGroup | null = null; // base (non-túra) segments, canvas pane
 let tourLayer: L.LayerGroup | null = null; // the túra's highlighted segments + dots
@@ -112,20 +133,22 @@ function drawNetwork(): void {
   const inTour = new Set(tour);
   const visible = segmentsInBounds(graphRef.edges, bounds).filter((e) => !inTour.has(e.id));
   const lines = visible.map((edge) => {
+    const st = SURFACE_STYLE[surfaceClass(edge.highway)];
     const pl = L.polyline(latLngsOf(edge), {
       renderer: netRenderer,
       pane: "network",
       color: trailColour(edge.colours),
-      weight: BASE_WEIGHT,
-      opacity: BASE_OPACITY,
+      weight: st.weight,
+      opacity: st.opacity,
+      dashArray: st.dashArray,
     });
     pl.on("click", () => toggleInTour(edge.id));
     pl.on("mouseover", () => {
-      pl.setStyle({ weight: 6, opacity: 1 });
+      pl.setStyle({ weight: 6, opacity: 1, dashArray: undefined });
       map.getContainer().style.cursor = "pointer";
     });
     pl.on("mouseout", () => {
-      pl.setStyle({ weight: BASE_WEIGHT, opacity: BASE_OPACITY });
+      pl.setStyle({ weight: st.weight, opacity: st.opacity, dashArray: st.dashArray });
       map.getContainer().style.cursor = "";
     });
     return pl;
@@ -145,7 +168,14 @@ function drawTour(): void {
     if (!edge) continue;
     const latlngs = latLngsOf(edge);
     layers.push(L.polyline(latlngs, { color: "#fff", weight: 11, opacity: 0.95, interactive: false }));
-    const line = L.polyline(latlngs, { color: trailColour(edge.colours), weight: 6, opacity: 1 });
+    // Dash/dot the highlight by surface too (over the solid white casing, so gaps
+    // read as white) — the turista sees at a glance how much of the túra is paved.
+    const line = L.polyline(latlngs, {
+      color: trailColour(edge.colours),
+      weight: 6,
+      opacity: 1,
+      dashArray: HIGHLIGHT_DASH[surfaceClass(edge.highway)],
+    });
     line.on("click", () => toggleInTour(id));
     line.on("mouseover", () => { map.getContainer().style.cursor = "pointer"; });
     line.on("mouseout", () => { map.getContainer().style.cursor = ""; });
@@ -303,10 +333,16 @@ function renderPanel(cands: AccessCandidate[]): void {
   // The segment list is collapsible (tap the header) — closed by default on phones
   // so the panel doesn't cover the map.
   const caret = segListExpanded ? "▾" : "▸";
+  // Share of the walking distance on natural trail (vs settlement paving / road) —
+  // a surface-quality glance alongside the distance.
+  const trailPct = Math.round(
+    trailFraction(walk.steps.map((s) => edgesById.get(s.id)).filter((e): e is Edge => !!e)) * 100,
+  );
   infoEl.innerHTML =
     `<button class="tour-head seg-toggle" type="button" aria-expanded="${segListExpanded}">` +
     `<span class="seg-caret">${caret}</span>` +
-    `<span><strong>Túra</strong> · ${tour.length} szakasz · <span class="tour-total">${formatDistance(walking)}</span></span></button>` +
+    `<span><strong>Túra</strong> · ${tour.length} szakasz · <span class="tour-total">${formatDistance(walking)}</span>` +
+    ` · <span class="tour-trail" title="A táv ${trailPct}%-a természetes ösvény">${trailPct}% 🥾</span></span></button>` +
     odaVissza +
     warnLine +
     `<ul class="seg-list${segListExpanded ? "" : " collapsed"}">${rows}</ul>` +
@@ -455,9 +491,11 @@ async function init(): Promise<void> {
   routeGraph = buildRouteGraph(graph.edges);
   allDeadEnds = deadEndVertices(graph.edges);
 
-  // "Vándor dob" starts a fresh túra from a random seed segment.
+  // "Vándor dob" starts a fresh túra from a random seed segment — only ever a
+  // natural trail (T10a), never a settlement street or motor road.
+  const trailSeeds = graph.edges.filter((e) => surfaceClass(e.highway) === "trail");
   const roll = () => {
-    const seed = pickRandomSegment(graph.edges);
+    const seed = pickRandomSegment(trailSeeds.length ? trailSeeds : graph.edges);
     tour = [seed.id];
     chosenAccess = null;
     rebuild();

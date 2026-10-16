@@ -167,7 +167,7 @@ is two axes — **underfoot** (what you walk *on*, from the `highway` tag, which
 already have) and **surroundings** (forest/field/urban, needs a landcover spatial
 join). We start with underfoot because the data is already in the graph.
 
-- [ ] **T10a · Underfoot surface class + at-a-glance emphasis (NEXT UP).** Derive a
+- [x] **T10a · Underfoot surface class + at-a-glance emphasis.** Derive a
   pure `surfaceClass ∈ {trail, paved, road}` from each segment's `highway` tag
   (trail = track/path/footway/steps/cycleway/bridleway; paved = residential/
   living_street/pedestrian/service/unclassified; road = secondary/tertiary/primary/
@@ -185,6 +185,14 @@ join). We start with underfoot because the data is already in the graph.
     waymark colour, vary only the visual weight so colour still reads. The túra
     highlight + selected styling stay as-is. Filter the roll in `roll()` /
     `pickRandomSegment`.
+  - **Done:** pure `surfaceClass(highway)` in [app/surface.ts](../app/surface.ts)
+    ({trail, paved, road}, unknown→paved). `drawNetwork()` keys a `SURFACE_STYLE`
+    map on it — trail full (w3.5/o0.85, solid), paved thin+faded+dashed
+    (w2/o0.5/"4 4"), road faintest (w1.5/o0.3/"2 5"); hover overrides to bold
+    solid; waymark colour preserved. `roll()` seeds only from `trail` edges.
+    Verified: auto-roll landed on a tanösvény; the marked route along Szabadság út
+    (secondary) draws faint+dashed while trail segments stay solid. 6 new tests
+    (pure cases + the 67/27/6 %km split + trail-seed guarantee); 116 green.
   - Later (T10b–d, see research doc): `attach-landcover.ts` forest/field/urban
     spatial join (handle multipolygon **relations**), `besideTraffic` proximity
     flag, persist `surface`/`tracktype`.
