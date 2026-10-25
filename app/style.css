@@ -287,6 +287,40 @@ body {
   background: #2f7d4f;
 }
 
+/* "Bejártam" — log the túra into the personal flashcards. Full-width, quiet trail
+   green; the "done" state (already fully walked) reads as an outline, not a prize. */
+.info .walked {
+  align-self: stretch;
+  margin-top: 0.1rem;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--trail);
+  color: #fff;
+  cursor: pointer;
+}
+
+.info .walked:hover {
+  filter: brightness(1.06);
+}
+
+.info .walked.done {
+  background: transparent;
+  color: var(--trail);
+  border-color: rgba(60, 110, 70, 0.4);
+}
+
+/* Quiet "how much you've covered" line on the empty panel — informative, not a
+   scoreboard (deliberately understated; see the gamification-hazard note). */
+.info .done-tally {
+  margin-top: 0.4rem;
+  color: #8a8172;
+  font-size: 0.82rem;
+}
+
 .mapy {
   color: var(--trail);
   font-weight: 600;

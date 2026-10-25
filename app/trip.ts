@@ -1,5 +1,6 @@
 // Pure helpers for the picker UI (T3). No DOM, no Leaflet — unit-testable.
 import type { AccessPoint, Edge } from "../graph/graph.ts";
+import { isWalked, lastWalked, type Profile } from "./profile.ts";
 
 /** [lon, lat] — the GeoJSON coordinate order used throughout the project. */
 export type Point = [number, number];
@@ -8,6 +9,39 @@ export type Point = [number, number];
 export function pickRandomSegment(edges: Edge[], rng: () => number = Math.random): Edge {
   if (edges.length === 0) throw new Error("no segments to pick from");
   return edges[Math.floor(rng() * edges.length)];
+}
+
+/**
+ * The north star in one function (see the philosophy memory + the Vándor-debütál
+ * field note): favour the untrodden. Two tiers of spaced repetition:
+ *   1. If any candidate has never been walked, pick uniformly among those — a
+ *      fresh segment always beats a familiar one. (This is the usual case while
+ *      the hill-country is far from fully covered.)
+ *   2. Once every candidate has been walked at least once, pick weighted by how
+ *      long ago — the most overdue segment is likeliest, the just-walked one
+ *      least. Keeps the dice-roll feel while leaning toward "járatlanért".
+ * `rng` and `now` are injectable for tests. Throws on empty input, like
+ * `pickRandomSegment`.
+ */
+export function pickNovelSegment(
+  edges: Edge[],
+  profile: Profile,
+  rng: () => number = Math.random,
+  now: number = Date.now(),
+): Edge {
+  if (edges.length === 0) throw new Error("no segments to pick from");
+  const fresh = edges.filter((e) => !isWalked(profile, e.id));
+  if (fresh.length) return pickRandomSegment(fresh, rng);
+  // All walked — weight by age (ms since last walk), min 1 so a just-walked
+  // segment still has a sliver of a chance rather than zero.
+  const weights = edges.map((e) => Math.max(1, now - (lastWalked(profile, e.id) ?? 0)));
+  const total = weights.reduce((a, w) => a + w, 0);
+  let r = rng() * total;
+  for (let i = 0; i < edges.length; i++) {
+    r -= weights[i];
+    if (r < 0) return edges[i];
+  }
+  return edges[edges.length - 1]; // rounding guard
 }
 
 /** Geographic viewport, degrees (the Leaflet bounds the UI passes in). */

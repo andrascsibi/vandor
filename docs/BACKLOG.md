@@ -208,11 +208,50 @@ join). We start with underfoot because the data is already in the graph.
   gain/loss/max grade. Segments gain a difficulty signal. (Was T5; demoted to
   nice-to-have — the segment explorer matters more right now.)
 - [x] URL/hash state so a túra is shareable/bookmarkable (done in T7f).
-- [ ] **Spaced-repetition memory** (Benedek István, *"járt utat járatlanért"*):
+- [~] **Spaced-repetition memory** (Benedek István, *"járt utat járatlanért"*):
   personal persistence of which segment was walked *when*; weight the picker by
   recency so recently-done segments are deprioritised and the untrodden boosted.
   One segment = one flashcard; goal = cover every marked road. (Supersedes the
   old "avoid recent repeats".) Novelty should also feed the awesomeness score.
+  - **First slice done (2026-10-25).** Local user profile: pure model
+    [app/profile.ts](../app/profile.ts) (`markWalked`/`isWalked`/`lastWalked`/
+    `walkCount`/`distinctWalkedCount`, immutable); persistence behind a swappable
+    `ProfileStore` interface, localStorage impl [app/profile-store.ts](../app/profile-store.ts)
+    (defensive load, degrades to empty). `pickNovelSegment` in [app/trip.ts](../app/trip.ts)
+    = two-tier novelty roll (uniform among never-walked; else age-weighted among
+    all walked); "Vándor dob" now uses it. A **✓ Bejártam** button logs the túra's
+    segments; walked segments draw **faded** in the base network; the empty panel
+    shows a quiet "🥾 Eddig N szakaszt jártál be" tally (deliberately understated —
+    no conquest scoreboard, per the gamification-hazard note). 17 new tests (134 green).
+  - **Deferred — where the profile lives (persistence/privacy):** localStorage
+    for now. Options noted in the [app/profile-store.ts](../app/profile-store.ts)
+    header: encrypted export/import file the user owns (iCloud/Drive = sync); or
+    zero-knowledge sync via a Cloudflare Worker + KV storing a client-encrypted
+    blob (WebCrypto AES-GCM, key from a passphrase). Vándor is a *public static
+    site* so it can hold no write secret — client-side encryption makes the
+    backend a dumb blob store.
+  - **Later:** feed novelty into the awesomeness score (not just the roll);
+    optional (opt-in) coverage viz; per-segment "last walked" shown in the panel.
+  - **⚠️ BLOCKER before this is trustworthy — stable segment identity across
+    ingests.** The profile keys on `edge.id`, which is a **compact 0-based index
+    assigned at graph-build time** ([graph/graph.ts](../graph/graph.ts) `Vertex.id`
+    comment). Any re-ingest (new OSM data, changed bbox, tweaked merge rules) that
+    reshuffles those indices **silently corrupts every profile** — walked ids now
+    point at different trails. Since new ingests are certain, we need a plan *before*
+    profiles accumulate real history:
+    - Add a **stable, content-derived key** per edge, persisted in `segments.json`,
+      independent of build order — e.g. a hash of the sorted constituent OSM way
+      ids + the two endpoint node ids (or rounded endpoint coords as a fallback for
+      POI-split vertices with synthetic negative osmIds). The profile keys on *that*,
+      not the index; the app maps stableKey→current index at load.
+    - Accept graceful drift: an OSM edit that splits/merges a way changes the key for
+      those edges → they read as "unwalked" again (acceptable, rare, self-healing).
+    - Migration for the already-shipped localStorage format: the current
+      `vandor.profile.v1` key is index-based; introduce `v2` keyed by stableKey and
+      best-effort migrate (or just let v1 lapse — little history yet). Store version
+      is already namespaced in the key, so this is clean.
+    - Until then: treat local profiles as disposable, and avoid re-ingesting in a
+      way that reorders ids.
 - [ ] Kid-excitement signals (castles, ruins, lookout towers, caves, buffet huts).
 - [ ] Surface off-trail named POIs as *context* (254 named peaks/viewpoints sit
   >60 m from any marked trail, e.g. Tök-hegy, Csúcs-hegy): show the nearest named

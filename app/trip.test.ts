@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   pickRandomSegment,
+  pickNovelSegment,
   shareEndpoints,
   mapyRouteUrl,
   formatDistance,
@@ -13,6 +14,7 @@ import {
   subsampleEvenly,
 } from "./trip.ts";
 import type { Edge } from "../graph/graph.ts";
+import { emptyProfile, markWalked } from "./profile.ts";
 
 function edge(partial: Partial<Edge>): Edge {
   return {
@@ -42,6 +44,41 @@ describe("pickRandomSegment", () => {
 
   it("throws on an empty list", () => {
     expect(() => pickRandomSegment([])).toThrow();
+  });
+});
+
+describe("pickNovelSegment", () => {
+  const edges = [edge({ id: 0 }), edge({ id: 1 }), edge({ id: 2 })];
+
+  it("picks only from never-walked segments when some exist", () => {
+    const profile = markWalked(emptyProfile(), [0], 1000);
+    // rng=0 would hit index 0, but 0 is walked, so the fresh pool is [1,2].
+    expect(pickNovelSegment(edges, profile, () => 0).id).toBe(1);
+    expect(pickNovelSegment(edges, profile, () => 0.999).id).toBe(2);
+  });
+
+  it("falls back to all segments when every one is walked, weighted by age", () => {
+    // 0 walked long ago, 1 recently, 2 in between → oldest (0) is likeliest.
+    let p = markWalked(emptyProfile(), [0], 0);
+    p = markWalked(p, [1], 9000);
+    p = markWalked(p, [2], 5000);
+    const now = 10_000;
+    // ages: 0→10000, 1→1000, 2→5000; total 16000. rng→0 lands in the first (0).
+    expect(pickNovelSegment(edges, p, () => 0, now).id).toBe(0);
+    // just past 0's slice (10000/16000 ≈ 0.625) lands in 1's slice.
+    expect(pickNovelSegment(edges, p, () => 0.63, now).id).toBe(1);
+    // the tail lands in 2's slice.
+    expect(pickNovelSegment(edges, p, () => 0.99, now).id).toBe(2);
+  });
+
+  it("behaves like a uniform pick when nothing is walked", () => {
+    const p = emptyProfile();
+    expect(pickNovelSegment(edges, p, () => 0).id).toBe(0);
+    expect(pickNovelSegment(edges, p, () => 0.5).id).toBe(1);
+  });
+
+  it("throws on an empty list", () => {
+    expect(() => pickNovelSegment([], emptyProfile())).toThrow();
   });
 });
 

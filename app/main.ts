@@ -6,7 +6,7 @@ import type { Edge, SegmentGraph, Vertex } from "../graph/graph.ts";
 import { haversine } from "../graph/graph.ts";
 import { SZELL_KALMAN_TER } from "../ingest/overpass.ts";
 import {
-  pickRandomSegment,
+  pickNovelSegment,
   formatDistance,
   trailColour,
   poiLabel,
@@ -15,6 +15,8 @@ import {
   segmentsInBounds,
   type GeoBounds,
 } from "./trip.ts";
+import { markWalked, isWalked, distinctWalkedCount, type Profile } from "./profile.ts";
+import { localProfileStore } from "./profile-store.ts";
 import {
   toggleSegment,
   totalLengthM,
@@ -76,6 +78,9 @@ const toLatLng = ([lon, lat]: [number, number]): L.LatLngTuple => [lat, lon];
 
 const BASE_WEIGHT = 3.5;
 const BASE_OPACITY = 0.85;
+// How far an already-walked segment fades in the base network (kept subtle — the
+// map is a quiet record of where you've been, not a conquest scoreboard).
+const WALKED_FADE = 0.4;
 
 // At-a-glance underfoot emphasis in the base network (T10a). Keep the waymark
 // colour (it still reads the trail's route), full line weight and full opacity;
@@ -115,6 +120,10 @@ let walk: TourWalk = { steps: [], coords: [], lengthM: 0, closed: false };
 // The routing substrate (proto-planner): full-graph adjacency + all dead ends.
 let routeGraph: RouteGraph | null = null;
 let allDeadEnds = new Set<number>();
+// The Vándor's personal walk history (the north star): which segments are walked,
+// persisted locally. Drives the novelty-weighted roll and the faded "done" lines.
+const profileStore = localProfileStore();
+let profile: Profile = profileStore.load();
 
 const latLngsOf = (edge: Edge) => edge.coordinates.map(toLatLng);
 
@@ -134,12 +143,17 @@ function drawNetwork(): void {
   const visible = segmentsInBounds(graphRef.edges, bounds).filter((e) => !inTour.has(e.id));
   const lines = visible.map((edge) => {
     const st = SURFACE_STYLE[surfaceClass(edge.highway)];
+    // A segment you've already walked is faded — a "learned flashcard". The map
+    // fills with faint lines as you cover the hills, and the untrodden stays bold.
+    const walked = isWalked(profile, edge.id);
+    const weight = walked ? st.weight * 0.7 : st.weight;
+    const opacity = walked ? st.opacity * WALKED_FADE : st.opacity;
     const pl = L.polyline(latLngsOf(edge), {
       renderer: netRenderer,
       pane: "network",
       color: trailColour(edge.colours),
-      weight: st.weight,
-      opacity: st.opacity,
+      weight,
+      opacity,
       dashArray: st.dashArray,
     });
     pl.on("click", () => toggleInTour(edge.id));
@@ -148,7 +162,7 @@ function drawNetwork(): void {
       map.getContainer().style.cursor = "pointer";
     });
     pl.on("mouseout", () => {
-      pl.setStyle({ weight: st.weight, opacity: st.opacity, dashArray: st.dashArray });
+      pl.setStyle({ weight, opacity, dashArray: st.dashArray });
       map.getContainer().style.cursor = "";
     });
     return pl;
@@ -268,8 +282,13 @@ function drawAccess(cands: AccessCandidate[]): void {
 
 function renderPanel(cands: AccessCandidate[]): void {
   if (tour.length === 0) {
+    const done = distinctWalkedCount(profile);
+    const tally = done
+      ? `<div class="hint done-tally">🥾 Eddig ${done} szakaszt jártál be — a többi vár.</div>`
+      : "";
     infoEl.innerHTML =
-      `<div class="hint">Dobj egyet, vagy kattints a térképen egy szakaszra — így építed fel a túrát.</div>`;
+      `<div class="hint">Dobj egyet, vagy kattints a térképen egy szakaszra — így építed fel a túrát.</div>` +
+      tally;
     return;
   }
   const oneWay = totalLengthM(tour, edgesById);
@@ -348,7 +367,25 @@ function renderPanel(cands: AccessCandidate[]): void {
     `<ul class="seg-list${segListExpanded ? "" : " collapsed"}">${rows}</ul>` +
     loopBtn +
     accessLine +
+    walkedBtn() +
     `<button class="clear" type="button">Ürítsd a túrát</button>`;
+}
+
+// "Bejártam": log the whole túra into the personal profile (the flashcards),
+// persist it, and fade those lines. If the túra's already fully walked, offer to
+// re-log it (another visit — spaced repetition cares when, not just whether).
+function walkedBtn(): string {
+  const distinct = new Set(tour);
+  const allDone = distinct.size > 0 && [...distinct].every((id) => isWalked(profile, id));
+  const label = allDone ? "✓ Újra bejártam" : "✓ Bejártam";
+  return `<button class="walked${allDone ? " done" : ""}" type="button">${label}</button>`;
+}
+
+// Record the current túra's segments as walked, save, and redraw (faded).
+function markTourWalked(): void {
+  profile = markWalked(profile, tour);
+  profileStore.save(profile);
+  rebuild();
 }
 
 function updateLinks(): void {
@@ -465,6 +502,10 @@ infoEl.addEventListener("click", (ev) => {
     }
     return;
   }
+  if (target.closest(".walked")) {
+    markTourWalked();
+    return;
+  }
   if (target.closest(".clear")) {
     tour = [];
     chosenAccess = null;
@@ -491,11 +532,12 @@ async function init(): Promise<void> {
   routeGraph = buildRouteGraph(graph.edges);
   allDeadEnds = deadEndVertices(graph.edges);
 
-  // "Vándor dob" starts a fresh túra from a random seed segment — only ever a
-  // natural trail (T10a), never a settlement street or motor road.
+  // "Vándor dob" starts a fresh túra from a seed segment — only ever a natural
+  // trail (T10a), never a settlement street or motor road — and favouring the
+  // untrodden over trails you've already walked (the north star: novelty-weighted).
   const trailSeeds = graph.edges.filter((e) => surfaceClass(e.highway) === "trail");
   const roll = () => {
-    const seed = pickRandomSegment(trailSeeds.length ? trailSeeds : graph.edges);
+    const seed = pickNovelSegment(trailSeeds.length ? trailSeeds : graph.edges, profile);
     tour = [seed.id];
     chosenAccess = null;
     rebuild();
