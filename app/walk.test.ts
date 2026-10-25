@@ -11,6 +11,7 @@ const e = (id: number, from: number, to: number, lengthM: number): Edge => ({
   ways: [1],
   colours: [],
   markings: [],
+  key: `k${id}`,
 });
 const vert = (id: number, lon: number, lat: number): Vertex => ({ id, osmId: id, lon, lat });
 const mapOf = <T extends { id: number }>(xs: T[]) => new Map(xs.map((x) => [x.id, x]));

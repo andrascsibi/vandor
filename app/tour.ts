@@ -63,26 +63,31 @@ export function tourAccessPoints(
   return [...byLot.values()];
 }
 
-/** Encode a túra as a URL hash body (no leading #): `t=1,2,3[&p=lon,lat]`. */
-export function encodeTourHash(ids: number[], access: { lon: number; lat: number } | null): string {
-  if (ids.length === 0) return "";
-  let h = `t=${ids.join(",")}`;
+// A shared túra link carries the segments' STABLE keys, not their build-order
+// indices — so a re-ingest that reshuffles indices can never make an old link
+// point at the wrong trails (the links we message each other are our proto-
+// persistence; they must outlive ingests). Keys are base36 `[0-9a-z]`, with an
+// optional `~<fp>` suffix on the rare disambiguated parallel arc.
+const KEY_RE = /^[0-9a-z~]+$/;
+
+/** Encode a túra as a URL hash body (no leading #): `t=<key>,<key>[&p=lon,lat]`. */
+export function encodeTourHash(keys: string[], access: { lon: number; lat: number } | null): string {
+  if (keys.length === 0) return "";
+  let h = `t=${keys.join(",")}`;
   if (access) h += `&p=${access.lon},${access.lat}`;
   return h;
 }
 
-/** Parse a shared túra hash back into segment ids + an optional chosen parking. */
-export function parseTourHash(hash: string): { ids: number[]; access: [number, number] | null } {
+/** Parse a shared túra hash back into segment keys + an optional chosen parking. */
+export function parseTourHash(hash: string): { keys: string[]; access: [number, number] | null } {
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   const t = params.get("t");
-  const ids = t
-    ? t.split(",").map(Number).filter((n) => Number.isInteger(n) && n >= 0)
-    : [];
+  const keys = t ? t.split(",").filter((k) => KEY_RE.test(k)) : [];
   let access: [number, number] | null = null;
   const p = params.get("p");
   if (p) {
     const [lon, lat] = p.split(",").map(Number);
     if (Number.isFinite(lon) && Number.isFinite(lat)) access = [lon, lat];
   }
-  return { ids, access };
+  return { keys, access };
 }

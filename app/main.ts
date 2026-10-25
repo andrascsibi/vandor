@@ -113,6 +113,7 @@ let tour: number[] = [];
 let chosenAccess: AccessCandidate | null = null; // the picked start parking
 let graphRef: SegmentGraph | null = null;
 const edgesById = new Map<number, Edge>();
+const edgeByKey = new Map<string, Edge>(); // stable key → edge, for shared links
 const vById = new Map<number, Vertex>();
 // How the current túra is walked (ordering + any doubled segments); recomputed by
 // `rebuild`. Closed (returns to the car) once a parking is chosen, else linear.
@@ -145,7 +146,7 @@ function drawNetwork(): void {
     const st = SURFACE_STYLE[surfaceClass(edge.highway)];
     // A segment you've already walked is faded — a "learned flashcard". The map
     // fills with faint lines as you cover the hills, and the untrodden stays bold.
-    const walked = isWalked(profile, edge.id);
+    const walked = isWalked(profile, edge.key);
     const weight = walked ? st.weight * 0.7 : st.weight;
     const opacity = walked ? st.opacity * WALKED_FADE : st.opacity;
     const pl = L.polyline(latLngsOf(edge), {
@@ -375,15 +376,21 @@ function renderPanel(cands: AccessCandidate[]): void {
 // persist it, and fade those lines. If the túra's already fully walked, offer to
 // re-log it (another visit — spaced repetition cares when, not just whether).
 function walkedBtn(): string {
-  const distinct = new Set(tour);
-  const allDone = distinct.size > 0 && [...distinct].every((id) => isWalked(profile, id));
+  const keys = tourKeys();
+  const allDone = keys.length > 0 && keys.every((k) => isWalked(profile, k));
   const label = allDone ? "✓ Újra bejártam" : "✓ Bejártam";
   return `<button class="walked${allDone ? " done" : ""}" type="button">${label}</button>`;
 }
 
+// The stable keys of the túra's segments — the profile keys on these, not the
+// build-order edge index, so walk history survives a graph re-ingest.
+function tourKeys(): string[] {
+  return tour.map((id) => edgesById.get(id)?.key).filter((k): k is string => !!k);
+}
+
 // Record the current túra's segments as walked, save, and redraw (faded).
 function markTourWalked(): void {
-  profile = markWalked(profile, tour);
+  profile = markWalked(profile, tourKeys());
   profileStore.save(profile);
   rebuild();
 }
@@ -412,9 +419,11 @@ function updateLinks(): void {
   }
 }
 
-// Persist the túra in the URL hash so it's shareable (no history spam).
+// Persist the túra in the URL hash so it's shareable (no history spam). We encode
+// the segments' stable keys, not their indices, so a shared link survives a graph
+// re-ingest (see tour.ts).
 function syncHash(): void {
-  const body = encodeTourHash(tour, chosenAccess);
+  const body = encodeTourHash(tourKeys(), chosenAccess);
   history.replaceState(null, "", body ? `#${body}` : location.pathname + location.search);
 }
 
@@ -526,7 +535,10 @@ infoEl.addEventListener("mouseout", (ev) => {
 async function init(): Promise<void> {
   const graph = (await fetch(graphUrl).then((r) => r.json())) as SegmentGraph;
   graphRef = graph;
-  for (const e of graph.edges) edgesById.set(e.id, e);
+  for (const e of graph.edges) {
+    edgesById.set(e.id, e);
+    edgeByKey.set(e.key, e);
+  }
   for (const v of graph.vertices) vById.set(v.id, v);
 
   routeGraph = buildRouteGraph(graph.edges);
@@ -546,8 +558,10 @@ async function init(): Promise<void> {
 
   // Restore a shared túra from the URL hash; returns false if there's nothing valid.
   const loadFromHash = (): boolean => {
-    const { ids, access } = parseTourHash(location.hash);
-    const valid = ids.filter((id) => edgesById.has(id));
+    const { keys, access } = parseTourHash(location.hash);
+    // Map each shared stable key back to its current edge index; unknown keys
+    // (an edge that changed since the link was made) are simply dropped.
+    const valid = keys.map((k) => edgeByKey.get(k)?.id).filter((id): id is number => id !== undefined);
     if (valid.length === 0) return false;
     tour = valid;
     chosenAccess = null;

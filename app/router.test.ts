@@ -30,6 +30,7 @@ const e = (id: number, from: number, to: number, lengthM: number): Edge => ({
   ways: [1],
   colours: [],
   markings: [],
+  key: `k${id}`,
 });
 const edges = [
   e(10, 0, 1, 100),

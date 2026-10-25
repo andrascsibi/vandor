@@ -30,11 +30,11 @@ export function pickNovelSegment(
   now: number = Date.now(),
 ): Edge {
   if (edges.length === 0) throw new Error("no segments to pick from");
-  const fresh = edges.filter((e) => !isWalked(profile, e.id));
+  const fresh = edges.filter((e) => !isWalked(profile, e.key));
   if (fresh.length) return pickRandomSegment(fresh, rng);
   // All walked — weight by age (ms since last walk), min 1 so a just-walked
   // segment still has a sliver of a chance rather than zero.
-  const weights = edges.map((e) => Math.max(1, now - (lastWalked(profile, e.id) ?? 0)));
+  const weights = edges.map((e) => Math.max(1, now - (lastWalked(profile, e.key) ?? 0)));
   const total = weights.reduce((a, w) => a + w, 0);
   let r = rng() * total;
   for (let i = 0; i < edges.length; i++) {

@@ -232,26 +232,38 @@ join). We start with underfoot because the data is already in the graph.
     backend a dumb blob store.
   - **Later:** feed novelty into the awesomeness score (not just the roll);
     optional (opt-in) coverage viz; per-segment "last walked" shown in the panel.
-  - **⚠️ BLOCKER before this is trustworthy — stable segment identity across
-    ingests.** The profile keys on `edge.id`, which is a **compact 0-based index
-    assigned at graph-build time** ([graph/graph.ts](../graph/graph.ts) `Vertex.id`
-    comment). Any re-ingest (new OSM data, changed bbox, tweaked merge rules) that
-    reshuffles those indices **silently corrupts every profile** — walked ids now
-    point at different trails. Since new ingests are certain, we need a plan *before*
-    profiles accumulate real history:
-    - Add a **stable, content-derived key** per edge, persisted in `segments.json`,
-      independent of build order — e.g. a hash of the sorted constituent OSM way
-      ids + the two endpoint node ids (or rounded endpoint coords as a fallback for
-      POI-split vertices with synthetic negative osmIds). The profile keys on *that*,
-      not the index; the app maps stableKey→current index at load.
-    - Accept graceful drift: an OSM edit that splits/merges a way changes the key for
-      those edges → they read as "unwalked" again (acceptable, rare, self-healing).
-    - Migration for the already-shipped localStorage format: the current
-      `vandor.profile.v1` key is index-based; introduce `v2` keyed by stableKey and
-      best-effort migrate (or just let v1 lapse — little history yet). Store version
-      is already namespaced in the key, so this is clean.
-    - Until then: treat local profiles as disposable, and avoid re-ingesting in a
-      way that reorders ids.
+  - **✅ BLOCKER RESOLVED (2026-10-25) — stable segment identity across ingests.**
+    Every edge now carries a **stable, content-derived `key`** (persisted in
+    `segments.json`), independent of build order: `edgeStableKey` in
+    [graph/graph.ts](../graph/graph.ts) hashes (cyrb53→base36) the sorted
+    constituent OSM way ids + the two endpoint tokens — the OSM node id for real
+    vertices, rounded coords (`endpointToken`) for synthetic POI-split vertices
+    (negative osmId). Both ways and endpoints are sorted so from/to orientation and
+    way-list order can't move the key. The profile keys on `key`, never the index;
+    the app reads `edge.key` directly (no reverse map needed since the edge object
+    is in hand).
+    - **Parallel-arc collisions:** a loop out to a POI-split dead-end peak and back
+      shares ways + endpoints (one real collision found: edge 341/342 →
+      *Törökugrató*). `dedupeEdgeKeys` (run once in `build-segments.ts`) appends a
+      direction-independent geometry fingerprint to *only* the colliding edges, so
+      the common case stays maximally stable. Verified: 1050/1050 keys unique and
+      0 drift across a rebuild.
+    - **Graceful drift** as planned: an OSM edit that splits/merges a constituent
+      way (or moves a POI-split point) changes that edge's key → reads "unwalked"
+      again (rare, self-healing).
+    - **No migration (by decision):** there are zero real profiles in the wild, so
+      the profile store just bumps to `vandor.profile.v2` (string-keyed) and orphans
+      any stale pre-stable-key dev blob — no migration code to carry.
+    - **Shared links now key-based (one-time break allowed).** The URL hash
+      (`#t=…&p=lon,lat`) encodes segment *stable keys* instead of build-order indices
+      ([app/tour.ts](../app/tour.ts) `encodeTourHash`/`parseTourHash`; `main.ts`
+      resolves keys→current edge via an `edgeByKey` map). The links we message each
+      other are our proto-persistence — now they survive re-ingests too. Old
+      index-based links are intentionally broken this once. Example:
+      `#t=1oqq271b9b,16q7r5xp2y9,wdgdoact1a~ak9hom737r&p=18.991,47.56`.
+    - Tests: `graph.test.ts` (order/index independence, synthetic-coord fallback,
+      dedupe), `segments-data.test.ts` (every committed edge has a unique non-empty
+      key), `tour.test.ts` (key-based hash round-trip). 140 tests green.
 - [ ] Kid-excitement signals (castles, ruins, lookout towers, caves, buffet huts).
 - [ ] Surface off-trail named POIs as *context* (254 named peaks/viewpoints sit
   >60 m from any marked trail, e.g. Tök-hegy, Csúcs-hegy): show the nearest named

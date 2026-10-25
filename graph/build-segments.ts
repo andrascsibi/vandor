@@ -8,7 +8,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { TrailFeatureCollection } from "../ingest/overpass.ts";
 import { NAMING_KINDS, type PoiFeature, type PoiFeatureCollection } from "../ingest/pois.ts";
-import { buildSegmentGraph } from "./graph.ts";
+import { buildSegmentGraph, dedupeEdgeKeys } from "./graph.ts";
 import { attachPois } from "./attach-pois.ts";
 import { attachAccess, usableParking } from "./attach-access.ts";
 
@@ -47,6 +47,10 @@ async function main(): Promise<void> {
   // T6: bake each endpoint's nearest usable car parking (crow-flies) as `access`.
   const parking = usableParking(allPois);
   const graph = attachAccess(withPois, parking);
+
+  // Ensure every segment's stable key is unique across the final graph, so the
+  // walk profile (which keys on it) can never conflate two segments.
+  dedupeEdgeKeys(graph.edges);
   const withAccess = graph.vertices.filter((v) => v.access).length;
   console.log(
     `  ${parking.length} usable parking → ${withAccess}/${graph.vertices.length} vertices got an access point`,

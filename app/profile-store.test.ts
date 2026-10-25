@@ -16,7 +16,7 @@ describe("localProfileStore", () => {
   it("round-trips a profile", () => {
     const storage = fakeStorage();
     const store = localProfileStore("k", storage);
-    const p = markWalked(emptyProfile(), [1, 2], 1000);
+    const p = markWalked(emptyProfile(), ["a", "b"], 1000);
     store.save(p);
     expect(localProfileStore("k", storage).load()).toEqual(p);
   });
@@ -31,8 +31,8 @@ describe("localProfileStore", () => {
   });
 
   it("drops entries that aren't numeric-timestamp arrays", () => {
-    const storage = fakeStorage({ k: JSON.stringify({ walks: { 1: [1000], 2: "nope", 3: ["x"] } }) });
-    expect(localProfileStore("k", storage).load()).toEqual({ walks: { 1: [1000] } });
+    const storage = fakeStorage({ k: JSON.stringify({ walks: { ab: [1000], cd: "nope", ef: ["x"] } }) });
+    expect(localProfileStore("k", storage).load()).toEqual({ walks: { ab: [1000] } });
   });
 
   it("degrades to empty when no storage is available", () => {

@@ -17,7 +17,7 @@ function twoVertexGraph(): SegmentGraph {
       { id: 1, osmId: 2, lon: 19.01, lat: 47.0 },
     ],
     edges: [
-      { id: 0, from: 0, to: 1, lengthM: 760, coordinates: [[19.0, 47.0], [19.01, 47.0]], ways: [1], colours: ["blue"], markings: ["K"] },
+      { id: 0, from: 0, to: 1, lengthM: 760, coordinates: [[19.0, 47.0], [19.01, 47.0]], ways: [1], colours: ["blue"], markings: ["K"], key: "in0" },
     ],
   };
 }

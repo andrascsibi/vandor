@@ -11,6 +11,7 @@ const e = (id: number, from: number, to: number, lengthM: number): Edge => ({
   ways: [1],
   colours: [],
   markings: [],
+  key: `k${id}`,
 });
 
 describe("toggleSegment", () => {
@@ -54,20 +55,22 @@ describe("tourAccessPoints", () => {
 });
 
 describe("encodeTourHash / parseTourHash", () => {
-  it("encodes ids and an optional chosen parking", () => {
-    expect(encodeTourHash([1, 2, 3], null)).toBe("t=1,2,3");
-    expect(encodeTourHash([1, 2, 3], { lon: 19.02, lat: 47.5 })).toBe("t=1,2,3&p=19.02,47.5");
+  it("encodes stable keys and an optional chosen parking", () => {
+    expect(encodeTourHash(["1oqq271b9b", "zswh3ca46m"], null)).toBe("t=1oqq271b9b,zswh3ca46m");
+    expect(encodeTourHash(["1oqq271b9b"], { lon: 19.02, lat: 47.5 })).toBe("t=1oqq271b9b&p=19.02,47.5");
     expect(encodeTourHash([], null)).toBe("");
   });
 
-  it("round-trips through parse", () => {
-    const h = encodeTourHash([58, 65, 348], { lon: 18.991, lat: 47.56 });
-    expect(parseTourHash(`#${h}`)).toEqual({ ids: [58, 65, 348], access: [18.991, 47.56] });
+  it("round-trips through parse (incl. a disambiguated ~ key)", () => {
+    const keys = ["1oqq271b9b", "wdgdoact1a~1abc", "zswh3ca46m"];
+    const h = encodeTourHash(keys, { lon: 18.991, lat: 47.56 });
+    expect(parseTourHash(`#${h}`)).toEqual({ keys, access: [18.991, 47.56] });
   });
 
-  it("parses a hash without a chosen parking, and tolerates junk", () => {
-    expect(parseTourHash("#t=1,2,3")).toEqual({ ids: [1, 2, 3], access: null });
-    expect(parseTourHash("")).toEqual({ ids: [], access: null });
-    expect(parseTourHash("#t=1,x,-5,3").ids).toEqual([1, 3]);
+  it("parses a hash without a chosen parking, and drops junk keys", () => {
+    expect(parseTourHash("#t=abc,def")).toEqual({ keys: ["abc", "def"], access: null });
+    expect(parseTourHash("")).toEqual({ keys: [], access: null });
+    // uppercase / spaces / other chars aren't valid base36 key tokens → dropped
+    expect(parseTourHash("#t=abc,A B,!!,def").keys).toEqual(["abc", "def"]);
   });
 });

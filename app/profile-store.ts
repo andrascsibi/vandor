@@ -28,7 +28,10 @@ export interface ProfileStore {
   save(profile: Profile): void;
 }
 
-const DEFAULT_KEY = "vandor.profile.v1";
+// Entries are keyed by the stable `Edge.key` (not the build-order index, which a
+// re-ingest can reshuffle). The `.v2` suffix simply orphans any pre-stable-key
+// blob from early dev — there are no real profiles in the wild to migrate.
+const DEFAULT_KEY = "vandor.profile.v2";
 
 /** Minimal Storage surface we use — lets tests pass a fake, and guards SSR/node. */
 type StorageLike = Pick<Storage, "getItem" | "setItem">;
@@ -62,11 +65,11 @@ export function localProfileStore(key: string = DEFAULT_KEY, storage: StorageLik
         const parsed = JSON.parse(raw) as unknown;
         const walks = (parsed as Profile | undefined)?.walks;
         if (!walks || typeof walks !== "object") return emptyProfile();
-        // Keep only well-formed numeric-timestamp arrays.
-        const clean: Record<number, number[]> = {};
-        for (const [id, ts] of Object.entries(walks)) {
+        // Keep only well-formed numeric-timestamp arrays, keyed by segment key.
+        const clean: Record<string, number[]> = {};
+        for (const [key, ts] of Object.entries(walks)) {
           if (Array.isArray(ts) && ts.every((t) => typeof t === "number")) {
-            clean[Number(id)] = ts as number[];
+            clean[key] = ts as number[];
           }
         }
         return { walks: clean };

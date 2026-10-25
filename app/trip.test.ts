@@ -17,7 +17,7 @@ import type { Edge } from "../graph/graph.ts";
 import { emptyProfile, markWalked } from "./profile.ts";
 
 function edge(partial: Partial<Edge>): Edge {
-  return {
+  const base: Edge = {
     id: 0,
     from: 0,
     to: 1,
@@ -29,8 +29,13 @@ function edge(partial: Partial<Edge>): Edge {
     ways: [1],
     colours: [],
     markings: [],
+    key: "k0",
     ...partial,
   };
+  // Default the stable key off the id (unless the caller set one) so each test
+  // edge has a distinct key — the profile keys on `key`, not the index.
+  if (partial.key === undefined) base.key = `k${base.id}`;
+  return base;
 }
 
 describe("pickRandomSegment", () => {
@@ -51,7 +56,7 @@ describe("pickNovelSegment", () => {
   const edges = [edge({ id: 0 }), edge({ id: 1 }), edge({ id: 2 })];
 
   it("picks only from never-walked segments when some exist", () => {
-    const profile = markWalked(emptyProfile(), [0], 1000);
+    const profile = markWalked(emptyProfile(), ["k0"], 1000);
     // rng=0 would hit index 0, but 0 is walked, so the fresh pool is [1,2].
     expect(pickNovelSegment(edges, profile, () => 0).id).toBe(1);
     expect(pickNovelSegment(edges, profile, () => 0.999).id).toBe(2);
@@ -59,9 +64,9 @@ describe("pickNovelSegment", () => {
 
   it("falls back to all segments when every one is walked, weighted by age", () => {
     // 0 walked long ago, 1 recently, 2 in between → oldest (0) is likeliest.
-    let p = markWalked(emptyProfile(), [0], 0);
-    p = markWalked(p, [1], 9000);
-    p = markWalked(p, [2], 5000);
+    let p = markWalked(emptyProfile(), ["k0"], 0);
+    p = markWalked(p, ["k1"], 9000);
+    p = markWalked(p, ["k2"], 5000);
     const now = 10_000;
     // ages: 0→10000, 1→1000, 2→5000; total 16000. rng→0 lands in the first (0).
     expect(pickNovelSegment(edges, p, () => 0, now).id).toBe(0);
@@ -178,7 +183,7 @@ describe("poiLabel / endpointsText", () => {
 
 describe("segmentsInBounds", () => {
   const seg = (coords: [number, number][], id = 0): Edge =>
-    ({ id, from: 0, to: 1, lengthM: 100, coordinates: coords, ways: [1], colours: [], markings: [] });
+    ({ id, from: 0, to: 1, lengthM: 100, coordinates: coords, ways: [1], colours: [], markings: [], key: `k${id}` });
   // viewport over the Buda hills
   const view = { west: 18.95, south: 47.5, east: 19.05, north: 47.56 };
 

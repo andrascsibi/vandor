@@ -13,7 +13,15 @@
 // to the neighbouring vertex instead); when several POIs claim one vertex the
 // higher-priority kind (POI_KINDS order) wins. No filesystem, no DOM.
 
-import { MERGE_THRESHOLD_M, haversine, type Edge, type SegmentGraph, type Vertex } from "./graph.ts";
+import {
+  MERGE_THRESHOLD_M,
+  edgeStableKey,
+  endpointToken,
+  haversine,
+  type Edge,
+  type SegmentGraph,
+  type Vertex,
+} from "./graph.ts";
 import { POI_KINDS, type PoiFeature, type PoiKind } from "../ingest/pois.ts";
 
 export const SNAP_RADIUS_M = 60;
@@ -242,6 +250,11 @@ export function attachPois(
     for (let i = 0; i + 1 < e.coordinates.length; i++) {
       len += haversine(e.coordinates[i], e.coordinates[i + 1]);
     }
+    // Recompute the stable key from the (possibly new, synthetic) endpoints: a
+    // split sub-edge gets a POI-split endpoint whose token is its rounded coord,
+    // while an untouched edge's real-node tokens match what buildSegmentGraph set.
+    const vf = vertices[e.from];
+    const vt = vertices[e.to];
     const edge: Edge = {
       id,
       from: e.from,
@@ -251,6 +264,11 @@ export function attachPois(
       ways: e.ways,
       colours: e.colours,
       markings: e.markings,
+      key: edgeStableKey(
+        e.ways,
+        endpointToken(vf.osmId, vf.lon, vf.lat),
+        endpointToken(vt.osmId, vt.lon, vt.lat),
+      ),
     };
     if (e.name !== undefined) edge.name = e.name;
     if (e.highway !== undefined) edge.highway = e.highway;

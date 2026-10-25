@@ -26,6 +26,7 @@ function lineGraph(): SegmentGraph {
         markings: ["K"],
         name: "Teszt út",
         highway: "path",
+        key: "in0",
       },
     ],
   };

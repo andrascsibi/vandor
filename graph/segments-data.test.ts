@@ -93,6 +93,19 @@ describe("data/segments.json", () => {
     }
   });
 
+  it("gives every segment a non-empty, unique stable key (profile keys on it)", () => {
+    // The walk profile keys on `edge.key`, not the build-order `id`, so a
+    // re-ingest can't silently mislabel history. Guard the invariant the profile
+    // relies on: every edge has a key, and no two share one.
+    const keys = new Set<string>();
+    for (const e of g.edges) {
+      expect(typeof e.key).toBe("string");
+      expect(e.key.length).toBeGreaterThan(0);
+      keys.add(e.key);
+    }
+    expect(keys.size).toBe(g.edges.length);
+  });
+
   it("propagates the Országos Kéktúra marking through to a segment", () => {
     const markings = new Set(g.edges.flatMap((e) => e.markings));
     expect(markings.has("OKT")).toBe(true);

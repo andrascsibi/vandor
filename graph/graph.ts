@@ -69,6 +69,13 @@ export interface Edge {
   name?: string;
   /** First highway tag encountered along the segment. */
   highway?: string;
+  /**
+   * Stable, build-order-independent content key (see `edgeStableKey`). Unlike
+   * `id` — a compact index reassigned on every rebuild — this survives re-ingest
+   * as long as the underlying OSM ways + endpoints are unchanged, so the personal
+   * walk profile can key on it without a re-ingest silently mislabelling history.
+   */
+  key: string;
 }
 
 export interface SegmentGraph {
@@ -89,6 +96,84 @@ export function haversine(a: [number, number], b: [number, number]): number {
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(s));
+}
+
+/**
+ * cyrb53 — a small, fast, well-distributed non-cryptographic string hash (public
+ * domain). Returns a ~53-bit integer; we render it base36 for a compact key.
+ * Pure and dependency-free, so the stable key is identical in Node (build) and
+ * the browser (load).
+ */
+function cyrb53(str: string, seed = 0): number {
+  let h1 = 0xdeadbeef ^ seed;
+  let h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+}
+
+/**
+ * Order-independent identity token for one edge endpoint. A real OSM node uses
+ * its node id (`n<id>`); a synthetic POI-split vertex (osmId < 0 — a build-order
+ * index, not a real node) falls back to rounded coordinates (`@lon,lat`), which
+ * reproduce deterministically across rebuilds from the same POI + polyline.
+ */
+export function endpointToken(osmId: number, lon: number, lat: number): string {
+  return osmId >= 0 ? `n${osmId}` : `@${lon.toFixed(6)},${lat.toFixed(6)}`;
+}
+
+/**
+ * A stable, build-order-independent content key for an edge: a hash of its
+ * sorted constituent OSM way ids plus its two endpoint tokens (also sorted, so
+ * the from/to orientation can't change it). Survives re-ingest while the
+ * underlying OSM ways + endpoints are unchanged; an OSM edit that splits/merges
+ * a constituent way changes the key for those edges — graceful, self-healing
+ * drift (they just read as unwalked again). The walk profile keys on THIS, never
+ * on the compact `id` index, so a re-ingest can't silently mislabel history.
+ */
+export function edgeStableKey(ways: number[], tokenA: string, tokenB: string): string {
+  const w = [...ways].sort((a, b) => a - b).join(",");
+  const ends = [tokenA, tokenB].sort().join(",");
+  return cyrb53(`${w}|${ends}`).toString(36);
+}
+
+/**
+ * A direction-independent fingerprint of a polyline: hashes the rounded (~1 m)
+ * coordinate sequence in whichever orientation sorts first, so a from/to flip on
+ * rebuild can't change it. Used only to disambiguate the rare parallel edges that
+ * share a base key.
+ */
+function geomFingerprint(coords: [number, number][]): string {
+  const pts = coords.map(([x, y]) => `${x.toFixed(5)},${y.toFixed(5)}`);
+  const fwd = pts.join(";");
+  const rev = [...pts].reverse().join(";");
+  return cyrb53(fwd < rev ? fwd : rev).toString(36);
+}
+
+/**
+ * Disambiguate edges that share a base stable key — rare parallel arcs between
+ * the same endpoints along the same ways (e.g. a loop out to a dead-end peak and
+ * back, or two sides of a lollipop onto a POI-split vertex). Each colliding edge
+ * gets a geometry fingerprint appended, so the key stays unique; the common case
+ * (a base key used by just one edge) is left untouched and maximally stable.
+ * Mutates `edges` in place. Call once on the final graph.
+ */
+export function dedupeEdgeKeys(edges: Edge[]): void {
+  const groups = new Map<string, Edge[]>();
+  for (const e of edges) {
+    const g = groups.get(e.key);
+    if (g) g.push(e);
+    else groups.set(e.key, [e]);
+  }
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    for (const e of g) e.key = `${e.key}~${geomFingerprint(e.coordinates)}`;
+  }
 }
 
 /** Summed haversine length of a polyline, in metres. */
@@ -419,6 +504,10 @@ export function buildSegmentGraph(
   };
 
   const edges: Edge[] = finalEdges.map((e, id) => {
+    // All endpoints here are real OSM nodes (POI splits happen later, in
+    // attachPois, which recomputes keys for the sub-edges it creates).
+    const fc = coord.get(e.from)!;
+    const tc = coord.get(e.to)!;
     const edge: Edge = {
       id,
       from: vertexIndex(e.from),
@@ -428,6 +517,11 @@ export function buildSegmentGraph(
       ways: e.ways,
       colours: e.colours,
       markings: e.markings,
+      key: edgeStableKey(
+        e.ways,
+        endpointToken(e.from, fc[0], fc[1]),
+        endpointToken(e.to, tc[0], tc[1]),
+      ),
     };
     if (e.name !== undefined) edge.name = e.name;
     if (e.highway !== undefined) edge.highway = e.highway;

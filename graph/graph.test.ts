@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { buildSegmentGraph, haversine, BRIDGE_THRESHOLD_M, type SegmentGraph } from "./graph.ts";
+import {
+  buildSegmentGraph,
+  dedupeEdgeKeys,
+  edgeStableKey,
+  endpointToken,
+  haversine,
+  BRIDGE_THRESHOLD_M,
+  type Edge,
+  type SegmentGraph,
+} from "./graph.ts";
 import type { TrailFeature, TrailFeatureCollection } from "../ingest/overpass.ts";
 
 // Helper: build a trail feature from node ids + coords (coords default to a
@@ -179,6 +188,68 @@ describe("buildSegmentGraph — bridge micro-gaps (road crossings)", () => {
     const g = buildSegmentGraph(fc([way([1, 2], [P(0), P(1)])]));
     expect(g.vertices).toHaveLength(2);
     expect(g.edges).toHaveLength(1);
+  });
+});
+
+describe("stable edge keys", () => {
+  it("is independent of from/to orientation and way-list order", () => {
+    const a = edgeStableKey([5, 2, 9], endpointToken(10, 19, 47), endpointToken(20, 19.1, 47.1));
+    const b = edgeStableKey([9, 5, 2], endpointToken(20, 19.1, 47.1), endpointToken(10, 19, 47));
+    expect(a).toBe(b);
+  });
+
+  it("changes when the ways or an endpoint change (graceful drift)", () => {
+    const base = edgeStableKey([1], endpointToken(10, 19, 47), endpointToken(20, 19.1, 47.1));
+    expect(edgeStableKey([1, 2], endpointToken(10, 19, 47), endpointToken(20, 19.1, 47.1))).not.toBe(base);
+    expect(edgeStableKey([1], endpointToken(11, 19, 47), endpointToken(20, 19.1, 47.1))).not.toBe(base);
+  });
+
+  it("falls back to rounded coords for synthetic (POI-split) vertices", () => {
+    // osmId < 0 → coord token, so a reshuffled synthetic index can't move the key.
+    expect(endpointToken(-732, 19.000004, 47.5)).toBe("@19.000004,47.500000");
+    const k1 = edgeStableKey([1], endpointToken(-732, 19.0, 47.5), endpointToken(10, 19.1, 47.1));
+    const k2 = edgeStableKey([1], endpointToken(-999, 19.0, 47.5), endpointToken(10, 19.1, 47.1));
+    expect(k1).toBe(k2); // different synthetic index, same coords → same key
+  });
+
+  it("buildSegmentGraph assigns a stable key to every edge, keyed only on content", () => {
+    wayId = 0;
+    const g = buildSegmentGraph(
+      fc([way([1, 2, 3], [P(0), P(1), P(2)], { highway: "path" })]),
+    );
+    // Rebuild with the node ids shifted (different indices, same geometry/ways):
+    wayId = 0;
+    const g2 = buildSegmentGraph(
+      fc([way([101, 2, 3], [P(0), P(1), P(2)], { highway: "path" })]),
+    );
+    // Endpoint node 1 → 101 changed, so that edge's key drifts (expected);
+    // what matters is the key is present and content-derived, not index-derived.
+    expect(g.edges[0].key).toBeTruthy();
+    expect(g2.edges[0].key).not.toBe(g.edges[0].key);
+  });
+
+  it("dedupeEdgeKeys disambiguates parallel arcs sharing a base key", () => {
+    const mk = (id: number, coords: [number, number][]): Edge => ({
+      id,
+      from: 0,
+      to: 1,
+      lengthM: 100,
+      coordinates: coords,
+      ways: [1],
+      colours: [],
+      markings: [],
+      key: "same", // forced collision: same ways + endpoints, different arcs
+    });
+    const edges = [
+      mk(0, [[19, 47], [19.0, 47.01], [19.01, 47.02]]),
+      mk(1, [[19, 47], [19.02, 47.0], [19.01, 47.02]]),
+      mk(2, [[18, 46], [18.5, 46.5]]), // a lone key, must stay untouched
+    ];
+    edges[2].key = "lone";
+    dedupeEdgeKeys(edges);
+    expect(edges[0].key).not.toBe(edges[1].key); // collision broken
+    expect(new Set(edges.map((e) => e.key)).size).toBe(3);
+    expect(edges[2].key).toBe("lone"); // non-colliding key left clean
   });
 });
 
