@@ -89,6 +89,7 @@ const compassModeEl = document.getElementById("compass-mode") as HTMLDivElement;
 const compassIntroEl = document.getElementById("compass-intro") as HTMLParagraphElement;
 const panelEl = document.getElementById("panel") as HTMLElement;
 const panelHandle = document.getElementById("panel-handle") as HTMLButtonElement;
+const panelHandleSummaryEl = document.getElementById("panel-handle-summary") as HTMLSpanElement;
 const panelActionsEl = document.getElementById("panel-actions") as HTMLDivElement;
 
 const isMobile = () => window.innerWidth <= 640;
@@ -472,6 +473,7 @@ function renderPanel(cands: AccessCandidate[]): void {
       `<div class="hint">Dobj egyet, vagy kattints a térképen egy szakaszra — így építed fel a túrát.</div>` +
       tally;
     panelActionsEl.innerHTML = ""; // no túra → no collapsed-mode actions
+    panelHandleSummaryEl.textContent = ""; // …and nothing to summarise on the handle
     return;
   }
   const oneWay = totalLengthM(tour, edgesById);
@@ -561,20 +563,28 @@ function renderPanel(cands: AccessCandidate[]): void {
   const trailPct = Math.round(
     trailFraction(walk.steps.map((s) => edgesById.get(s.id)).filter((e): e is Edge => !!e)) * 100,
   );
-  // A "how far from town" chip, always visible in the (collapsible) header. With a
-  // chosen start it's the crow-flies from Széll Kálmán tér to that parking (how far
-  // you drive out); with none chosen yet, the distance to the closest parking so you
-  // can gauge access before picking one.
-  let accessChip = "";
+  // A "how far from town" metric, shown both in the header and on the collapsed-mode
+  // expand chevron. With a chosen start it's the crow-flies from Széll Kálmán tér to
+  // that parking (how far you drive out); with none chosen yet, the distance to the
+  // closest parking so you can gauge access before picking one.
+  let accessText = "";
+  let accessTitle = "";
   if (chosenAccess) {
     const szell = haversine([chosenAccess.lon, chosenAccess.lat], SZELL);
-    accessChip =
-      ` · <span class="tour-access" title="Széll Kálmán tértől a parkolóig (madártávlat)">🚗 ${escapeHtml(formatDistance(szell))}</span>`;
+    accessText = `🚗 ${formatDistance(szell)}`;
+    accessTitle = "Széll Kálmán tértől a parkolóig (madártávlat)";
   } else if (cands.length) {
     const nearest = cands.reduce((a, b) => (b.distM < a.distM ? b : a));
-    accessChip =
-      ` · <span class="tour-access" title="Legközelebbi parkoló a túrától">🅿️ ${escapeHtml(formatDistance(nearest.distM))}</span>`;
+    accessText = `🅿️ ${formatDistance(nearest.distM)}`;
+    accessTitle = "Legközelebbi parkoló a túrától";
   }
+  const accessChip = accessText
+    ? ` · <span class="tour-access" title="${escapeHtml(accessTitle)}">${escapeHtml(accessText)}</span>`
+    : "";
+  // The collapsed panel (mobile) hides the túra card, so surface the same at-a-glance
+  // metrics on the expand chevron itself — distance · % underfoot · access.
+  panelHandleSummaryEl.textContent =
+    `${formatDistance(walking)} · ${trailPct}% 🥾` + (accessText ? ` · ${accessText}` : "");
   infoEl.innerHTML =
     `<button class="tour-head seg-toggle" type="button" aria-expanded="${segListExpanded}">` +
     `<span class="seg-caret">${caret}</span>` +

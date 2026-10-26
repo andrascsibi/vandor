@@ -680,17 +680,40 @@ body {
     pointer-events: auto;
   }
 
-  .panel-handle-chevron {
-    display: flex;
+  /* The handle is a paper pill. Empty (no túra) it's a bare chevron grip; with a túra
+     it carries the at-a-glance metrics the collapsed card can't show. */
+  .panel-handle-pill {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 3.4rem;
-    height: 1.15rem;
-    font-size: 0.8rem;
+    gap: 0.45rem;
+    min-width: 3.4rem;
+    height: 1.35rem;
+    padding: 0 0.6rem;
+    font-size: 0.78rem;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
     color: var(--earth);
     background: var(--paper);
     border-radius: 999px;
     box-shadow: 0 2px 7px rgba(40, 30, 15, 0.22);
+  }
+
+  .panel-handle-summary:empty {
+    display: none;
+  }
+
+  .panel-handle-chevron {
+    display: flex;
+    align-items: center;
+    font-size: 0.72rem;
+    opacity: 0.75;
+  }
+
+  /* When the card is open the body already shows these metrics — keep just the chevron. */
+  #panel.panel-open .panel-handle-summary {
+    display: none;
   }
 
   /* Collapsed (no .panel-open): hide the túra body; show the action pills instead. */
