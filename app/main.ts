@@ -15,7 +15,10 @@ import {
 import { SZELL_KALMAN_TER } from "../ingest/overpass.ts";
 import {
   pickNovelSegment,
-  pickWalkedSegment,
+  pickRandomSegment,
+  kocaPool,
+  segmentsTouchingVertices,
+  POPULAR_PLACES,
   formatDistance,
   trailColour,
   poiLabel,
@@ -94,7 +97,7 @@ const panelActionsEl = document.getElementById("panel-actions") as HTMLDivElemen
 
 const isMobile = () => window.innerWidth <= 640;
 
-// Capitalise the first letter only (so "faj-turista" → "Faj-turista", not "Faj-Turista").
+// Capitalise the first letter only (so "kulturista" → "Kulturista").
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // The compass info box is collapsible; its state is sticky (localStorage). Default:
@@ -865,22 +868,30 @@ async function init(): Promise<void> {
   // (T10a), never a settlement street or motor road. Each lens then rolls with its
   // own strategy (T12b): the land it reads shapes what "véletlen" means.
   trailSeeds = graph.edges.filter((e) => surfaceClass(e.highway) === "trail");
-  // The kultúrista dob rolls from trail seeds with food/drink on or close to them.
+  // The kultúrista dob rolls from trail seeds with food/drink on or close to them —
+  // walked or not, the only thing that matters to him is the hospitality nearby.
   kulturistaSeeds = segmentsNearHospitality(trailSeeds, foodDrinkPois);
+  // The kóca's famous-spot seed: segments touching a POPULAR_PLACES summit. Matched
+  // by vertex name so a rebuild can't shuffle it out from under us.
+  const popularVertexIds = new Set(
+    graph.vertices.filter((v) => v.name !== undefined && POPULAR_PLACES.includes(v.name)).map((v) => v.id),
+  );
+  const kocaPopular = segmentsTouchingVertices(graph.edges, popularVertexIds);
 
   const novelty = () => pickNovelSegment(trailSeeds.length ? trailSeeds : graph.edges, profile);
   // Per-lens seed strategy:
   //  🧭 turista   — the north star: favour the untrodden (novelty-weighted).
-  //  🍷 kultúrista — land near food/drink (novelty within that themed pool).
+  //  🍷 kultúrista — any segment near food/drink, uniformly (visited or new alike).
   //  🩸 faj-turista — the steepest; pending the T12c SRTM DEM → novelty for now.
-  //  🐷 kóca       — the anti-Vándor: re-tread an already-walked path; novelty until
-  //                 the profile has one.
+  //  🐷 kóca       — the anti-Vándor: the famous spots + paths already walked, uniformly.
   const rollSeed = (): Edge => {
     switch (lens) {
       case "kulturista":
-        return kulturistaSeeds.length ? pickNovelSegment(kulturistaSeeds, profile) : novelty();
-      case "kocaturista":
-        return pickWalkedSegment(graph.edges, profile) ?? novelty();
+        return kulturistaSeeds.length ? pickRandomSegment(kulturistaSeeds) : novelty();
+      case "kocaturista": {
+        const pool = kocaPool(kocaPopular, graph.edges, profile);
+        return pool.length ? pickRandomSegment(pool) : novelty();
+      }
       case "fajturista":
       case "turista":
       default:

@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   pickRandomSegment,
   pickNovelSegment,
-  pickWalkedSegment,
+  kocaPool,
+  segmentsTouchingVertices,
   shareEndpoints,
   mapyRouteUrl,
   formatDistance,
@@ -88,19 +89,45 @@ describe("pickNovelSegment", () => {
   });
 });
 
-describe("pickWalkedSegment", () => {
-  const edges = [edge({ id: 0 }), edge({ id: 1 }), edge({ id: 2 })];
-
-  it("picks only from already-walked segments (the kóca re-tread)", () => {
-    // 0 and 2 walked; the familiar pool is [0, 2].
-    let p = markWalked(emptyProfile(), ["k0"], 1000);
-    p = markWalked(p, ["k2"], 2000);
-    expect(pickWalkedSegment(edges, p, () => 0)!.id).toBe(0);
-    expect(pickWalkedSegment(edges, p, () => 0.999)!.id).toBe(2);
+describe("segmentsTouchingVertices", () => {
+  it("keeps segments with either endpoint in the set", () => {
+    const edges = [
+      edge({ id: 0, from: 10, to: 11 }),
+      edge({ id: 1, from: 11, to: 12 }),
+      edge({ id: 2, from: 20, to: 21 }),
+    ];
+    const got = segmentsTouchingVertices(edges, new Set([11])).map((e) => e.id);
+    expect(got).toEqual([0, 1]);
   });
 
-  it("returns undefined when nothing is walked (caller falls back)", () => {
-    expect(pickWalkedSegment(edges, emptyProfile())).toBeUndefined();
+  it("empty set keeps nothing", () => {
+    const edges = [edge({ id: 0 })];
+    expect(segmentsTouchingVertices(edges, new Set())).toEqual([]);
+  });
+});
+
+describe("kocaPool", () => {
+  const edges = [edge({ id: 0 }), edge({ id: 1 }), edge({ id: 2 }), edge({ id: 3 })];
+
+  it("concatenates the popular seed with the walked segments", () => {
+    const popular = [edge({ id: 0 })];
+    const p = markWalked(emptyProfile(), ["k2"], 1000);
+    expect(kocaPool(popular, edges, p).map((e) => e.id)).toEqual([0, 2]);
+  });
+
+  it("keeps a popular segment that is also walked twice (doubly likely)", () => {
+    const popular = [edge({ id: 2 })];
+    const p = markWalked(emptyProfile(), ["k2"], 1000);
+    expect(kocaPool(popular, edges, p).map((e) => e.id)).toEqual([2, 2]);
+  });
+
+  it("falls back to just the popular seed on an empty profile", () => {
+    const popular = [edge({ id: 0 }), edge({ id: 1 })];
+    expect(kocaPool(popular, edges, emptyProfile()).map((e) => e.id)).toEqual([0, 1]);
+  });
+
+  it("is empty when there is no popular seed and nothing is walked", () => {
+    expect(kocaPool([], edges, emptyProfile())).toEqual([]);
   });
 });
 

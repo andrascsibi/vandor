@@ -45,19 +45,35 @@ export function pickNovelSegment(
 }
 
 /**
- * Pick one *already-walked* segment uniformly at random — the kóca-turista roll
- * (T12b). The exact inverse of the north star (`pickNovelSegment`): the dilettante
- * re-treads the paths he already knows rather than seeking the untrodden. Returns
- * undefined when nothing has been walked yet, so the caller can fall back to a
- * normal roll. `rng` injectable for tests.
+ * The kóca-turista's comfort zone — famous, easy Buda-hills destinations everyone
+ * knows (Benedek's dilettante sticks to what's fashionable, not the untrodden).
+ * Matched by endpoint vertex *name*, which is stable across rebuilds — unlike the
+ * build-order vertex ids. "Hárshegy" is two summits (Nagy- + Kis-Hárs-hegy).
  */
-export function pickWalkedSegment(
-  edges: Edge[],
-  profile: Profile,
-  rng: () => number = Math.random,
-): Edge | undefined {
-  const walked = edges.filter((e) => isWalked(profile, e.key));
-  return walked.length ? pickRandomSegment(walked, rng) : undefined;
+export const POPULAR_PLACES: readonly string[] = [
+  "Normafa",
+  "János-hegy",
+  "Nagy-Hárs-hegy",
+  "Kis-Hárs-hegy",
+  "Hármashatár-hegy",
+];
+
+/** Segments with either endpoint among `vertexIds` (e.g. the popular summits). */
+export function segmentsTouchingVertices(edges: Edge[], vertexIds: Set<number>): Edge[] {
+  return edges.filter((e) => vertexIds.has(e.from) || vertexIds.has(e.to));
+}
+
+/**
+ * The kóca-turista's roll pool (T12b): the hardcoded `popular` segments concatenated
+ * with every segment the profile has already walked. The inverse of the north star —
+ * the dilettante re-treads the famous spots and the paths he knows rather than
+ * seeking the untrodden. The popular seed matters most on a fresh (empty) profile:
+ * without it the kóca could recommend nothing. Duplicates are kept on purpose — a
+ * spot that's both famous *and* already walked is doubly likely, which suits him.
+ * Empty in → empty out, so the caller can fall back to a normal roll.
+ */
+export function kocaPool(popular: Edge[], edges: Edge[], profile: Profile): Edge[] {
+  return [...popular, ...edges.filter((e) => isWalked(profile, e.key))];
 }
 
 /** Geographic viewport, degrees (the Leaflet bounds the UI passes in). */
