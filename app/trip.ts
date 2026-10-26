@@ -44,6 +44,22 @@ export function pickNovelSegment(
   return edges[edges.length - 1]; // rounding guard
 }
 
+/**
+ * Pick one *already-walked* segment uniformly at random — the kóca-turista roll
+ * (T12b). The exact inverse of the north star (`pickNovelSegment`): the dilettante
+ * re-treads the paths he already knows rather than seeking the untrodden. Returns
+ * undefined when nothing has been walked yet, so the caller can fall back to a
+ * normal roll. `rng` injectable for tests.
+ */
+export function pickWalkedSegment(
+  edges: Edge[],
+  profile: Profile,
+  rng: () => number = Math.random,
+): Edge | undefined {
+  const walked = edges.filter((e) => isWalked(profile, e.key));
+  return walked.length ? pickRandomSegment(walked, rng) : undefined;
+}
+
 /** Geographic viewport, degrees (the Leaflet bounds the UI passes in). */
 export interface GeoBounds {
   west: number;

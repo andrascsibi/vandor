@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   pickRandomSegment,
   pickNovelSegment,
+  pickWalkedSegment,
   shareEndpoints,
   mapyRouteUrl,
   formatDistance,
@@ -84,6 +85,22 @@ describe("pickNovelSegment", () => {
 
   it("throws on an empty list", () => {
     expect(() => pickNovelSegment([], emptyProfile())).toThrow();
+  });
+});
+
+describe("pickWalkedSegment", () => {
+  const edges = [edge({ id: 0 }), edge({ id: 1 }), edge({ id: 2 })];
+
+  it("picks only from already-walked segments (the kóca re-tread)", () => {
+    // 0 and 2 walked; the familiar pool is [0, 2].
+    let p = markWalked(emptyProfile(), ["k0"], 1000);
+    p = markWalked(p, ["k2"], 2000);
+    expect(pickWalkedSegment(edges, p, () => 0)!.id).toBe(0);
+    expect(pickWalkedSegment(edges, p, () => 0.999)!.id).toBe(2);
+  });
+
+  it("returns undefined when nothing is walked (caller falls back)", () => {
+    expect(pickWalkedSegment(edges, emptyProfile())).toBeUndefined();
   });
 });
 

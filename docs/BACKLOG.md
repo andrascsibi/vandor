@@ -153,12 +153,156 @@ lose work mid-flight. Ordered for earliest *visible* value over the real substra
   waypoints (`subsampleEvenly`) instead of keeping only the first 15. 10 new
   `walk.test.ts` specs; 110 tests green.
 
+## Turista-lencsék (Benedek István — current focus)
+
+See [TURISTA-LENSES.md](TURISTA-LENSES.md) for the frame: the four *turista* types
+are **four lenses over the same segment graph**, not four planning modes — a lens
+changes what Vándor shows you about the *land*, never the túra. Two overlay lenses
+(context-POI), one re-ranking lens (steepness), plus today's default. Each lens
+ships standalone.
+
+- [x] **T12a · Lens switch substrate.** Done 2026-10-25 (148 tests, +8). Pure
+  [app/lens.ts](../app/lens.ts): the `Lens` vocabulary (`turista` default +
+  kulturista/fajturista/kocaturista), `LENS_META` (icon/label/note/`implemented`
+  flag — one home for the vocabulary), and hash (de)serialisation (`encodeLens`/
+  `parseLens`; the default encodes to "" so plain links stay clean, composed with
+  the túra hash via `&`). [index.html](../index.html) gained a `#lenses` row +
+  `#lens-note`; [app/main.ts](../app/main.ts) builds the four icon toggles from
+  `LENS_META`, `setLens`/`reflectLens` update the pressed button + `body[data-lens]`
+  hook + the note (empty for turista; the not-yet-built lenses flag "hamarosan"),
+  `syncHash` carries the lens, and it's restored from the opening hash + on
+  `hashchange` (a shared link brings its lens). Lenses are **no-op** for now — the
+  switch works, highlights, persists, and shares; T12b–d hang the overlays off
+  `lens`. [app/lens.test.ts](../app/lens.test.ts): vocabulary completeness, guard,
+  hash round-trip, and composition-safety with `parseTourHash`. Verified via
+  headless screenshots (default = 🧭 active, no note; `#l=kulturista` restores the 🍷
+  lens + "hamarosan" note).
+
+- [x] **T12b · 🍷 kultúrista + vendéglátás ingest.** Done 2026-10-26 (170 tests,
+  +22). ONE ingest serves TWO needs: the kultúrista lens *and* the
+  [családi field note](FIELD-NOTES-CSALADI-TURA.md)'s "étterem sétatávban a végén".
+  - [ingest/pois.ts](../ingest/pois.ts): `buildPoiQuery` now unions `amenity ∈
+    {restaurant, cafe, fast_food, pub, bar, biergarten}` + `tourism=picnic_site`
+    (nodes AND ways — restaurants/biergartens are area-mapped). New hospitality
+    `kind`s (food/drink/picnic) via pure `classifyHospitality(tags)`, which `classify`
+    delegates to; `fetch-pois.ts` unchanged. Raw ingest: 3638 food / 2169 drink /
+    224 picnic in the 20 km bbox.
+  - [graph/attach-hospitality.ts](../graph/attach-hospitality.ts): hospitality is a
+    **context-POI, never a graph vertex** — `clipToNetwork` keeps only POIs within
+    `HOSPITALITY_CLIP_M` (600 m) of any segment coordinate or baked access point
+    (`withinOfNetwork` + `networkAnchors`), deduped by kind+position.
+    [build-segments.ts](../graph/build-segments.ts) emits
+    `data/hospitality.json` (3305 POIs, 241 KB) alongside segments.json.
+  - [app/hospitality.ts](../app/hospitality.ts): pure runtime `hospitalityNear(pois,
+    anchors, HOSPITALITY_NEAR_M=800)` narrows the committed set to sétatáv of the
+    túra; `hospitalityIcon`/`hospitalityTooltip` label each pin (🍴/🍷/🧺).
+  - [app/main.ts](../app/main.ts): under the 🍷 lens, `drawHospitality()` overlay
+    (soft round emoji divIcon at each nearby POI, anchored on the túra's endpoints +
+    access), panel line "🍴 N vendéglátóhely a közelben" (a quiet "nincs" when none).
+    Gated on `lens === "kulturista"` → empty & cleared under every other lens; the
+    lens still never touches the túra. [lens.ts](../app/lens.ts) `kulturista.implemented
+    = true`.
+  - *Tested:* `classifyHospitality`, `withinOfNetwork`/`clipToNetwork`, `hospitalityNear`
+    + labels, and a `data/hospitality.json` integrity test (count band, all three kinds,
+    every pin within the clip, no dupes). Verified via headless screenshots on the
+    Normafa segment: 🍷 shows 22 pins + the panel line; 🧭 (default) shows the same
+    túra with no pins.
+  - **Refinement (2026-10-26, 176 tests):** split the overlay by lens and made the
+    dob **lens-aware**. *Picnic belongs to the turista, not the kultúrista* — a real
+    turista carries the backpack, a piknik only annoys the kultúrista who brought
+    nothing: 🧭 draws 🧺 picnic (quiet "N piknikhely" line), 🍷 draws 🍴🍷 food/drink
+    (no picnic). The **"dob" button renames per lens** (`rollLabel`, [lens.ts](../app/lens.ts)):
+    "🎲 Vándor dob" for the default, "🎲 Kultúrista/Faj-turista/Kóca-turista dob" otherwise.
+    Each lens **rolls with its own strategy** ([main.ts](../app/main.ts) `rollSeed`): 🧭
+    novelty (the north star); 🍷 novelty within the food/drink-adjacent trail pool
+    (`segmentsNearHospitality`, [hospitality.ts](../app/hospitality.ts)); 🐷 the
+    **anti-Vándor** — re-treads an already-walked segment (`pickWalkedSegment`,
+    [trip.ts](../app/trip.ts)), the exact inverse of "járatlanért"; 🩸 steepest, which
+    falls back to novelty until the T12c DEM lands. Tested: `rollLabel`,
+    `pickWalkedSegment`, `segmentsNearHospitality`.
+  - **Compass-rose UI (2026-10-26):** the lens switch + dice moved out of the panel
+    into a floating **iránytű** ([index.html](../index.html) `#compass`): the four lenses
+    on a ring at the cardinal points — 🧭 turista N / 🐷 kóca S, 🍷 kultúrista W / 🩸
+    faj-turista E (the opposites the philosophy asks for; a KWML quaternity, "a real
+    turista is a bit of each") — around the **central dice**, now the app's biggest,
+    boldest element. The ring is click-through (`pointer-events`), so the map stays
+    reachable between the buttons; a pill caption under it names the active roll.
+    `LENS_POS` in [main.ts](../app/main.ts) places each button; `rollLabel` lost its 🎲
+    (the glyph lives on the dice button). See docs/TURISTA-LENSES.md "Az iránytű".
+  - **Self-explaining compass (2026-10-26):** moved the iránytű to **top-right**
+    (desktop `position: fixed`; mobile it folds into the panel top, since the near
+    full-width panel leaves no room beside it). The **panel is now túra-only** — brand
+    title and mode-note removed. The caption is a **toggle**: expanded, it reveals a card
+    with the active turista's **Benedek István characterisation** (`LENS_META.blurb`, the
+    four quotes + the "Az emberiség két részre oszlik…" framing in `TURISTA_INTRO`) and
+    what the lens does. Open/closed state is **sticky in localStorage** (default open).
+    Verified desktop + mobile (device-emulated via CDP — note `shot.sh`'s `--window-size`
+    inflates the layout viewport ~1.16×, so its right-edge "clipping" is an artifact, not
+    a real overflow) and the collapse/persist round-trip.
+  - **Mobile collapse-to-compass workflow (2026-10-26):** on phones the tall panel
+    swallowed the map, so the túra body is wrapped in `#panel-body` and the panel
+    **folds down to just the compass** by default — a slim `#panel-handle` (▾) expands
+    it. Rolling the dice or committing a tour action (close-loop / fill-gap) auto-
+    collapses via `collapsePanel()`, so you throw the dice / switch lenses with the map
+    in view and the result lands on the map, not behind the panel. Desktop is untouched
+    (handle `display:none`, body always shown, `.panel-open` a no-op). Benedek box
+    defaults closed on mobile / open on desktop. CDP-verified the full flow
+    (collapsed → handle expand → roll re-collapses) at an emulated 390×844.
+  - **Unified top-right hub + collapsed-mode action pills (2026-10-26):** the separate
+    top-left panel is gone — the whole `#panel` is now one **transparent, auto-width
+    control column pinned top-right** (desktop + mobile): compass → caption → Benedek →
+    `#panel-actions` → handle → `.panel-body` (the túra, now carrying the paper card).
+    Auto width = compass-narrow when collapsed, túra-card-wide (capped 21rem) when open.
+    In collapsed mode the loop/fill/empty buttons appear as **icon-only pills** (🔄 / 🧩 /
+    🗑️, whichever apply) sharing the body buttons' classes so one delegated handler on
+    `#panel` drives both — so you can act without expanding. `isMobile` switched to
+    `innerWidth ≤ 640` (reliable under CDP emulation, unlike `matchMedia`). CDP-verified
+    desktop + mobile collapsed/expanded and that the clear pill fires end-to-end.
+
+- [ ] **T12c · 🩸 faj-turista + elevation ingest.** SRTM 1-arcsec `.hgt` tiles for
+  the bbox (2–4 tiles; raw int16, **zero deps**, offline, deterministic — fits the
+  "commit the data" ethos; NOT an elevation API — rate-limited/flaky).
+  `ingest/elevation.ts` (pure: tile index → `sampleElevation`, `profileAlong`,
+  `gradeMetrics`) + `fetch-dem.ts` (`npm run dem`). `graph/build-segments.ts` gains
+  an `attachElevation` step; `Edge.grade = {gainM, lossM, maxGradePct, meanGradePct}`
+  (steepness over a ~100 m sliding window so a single step can't win).
+  [app/trip.ts](../app/trip.ts): `pickSteepSegment` (roll from the steep quantile) +
+  `topSteepest(edges, n)`. [app/main.ts](../app/main.ts): under 🩸, crown divIcon at
+  the top-5 segment midpoints ("👑 #3 · 24%"), roll biased steep, grade row in the
+  panel. **High-leverage:** the DEM also unblocks the deferred túra elevation profile
+  (T7 later), a difficulty signal, and an awesomeness input.
+  - *Roll already stubbed (T12b):* the 🩸 button renames to "Faj-turista dob" and
+    `rollSeed`'s `fajturista` branch is a novelty fallback — fill it with
+    `pickSteepSegment` once `Edge.grade` exists.
+
+- [ ] **T12d · 🐷 kóca-turista (gag).** `shop ∈ {outdoor, sports}` overlay reusing
+  the T12b overlay infra — different `kind`, pig icon. Cheap joke; do last / optional.
+  - *Roll already shipped (T12b):* the 🐷 button renames to "Kóca-turista dob" and
+    rolls `pickWalkedSegment` — the anti-Vándor re-treads walked paths (novelty
+    fallback until the profile has one). Only the shop overlay remains for this task.
+
 ## Automatic planner (later)
 
 - [ ] **T8 · Planner (transit-aware).** Allow start ≠ end when reachable by
-  bus/cogwheel/chairlift; prefer public transport where sensible.
+  bus/cogwheel/chairlift; prefer public transport where sensible. **Substrate is
+  already in place:** `planWalk` ([app/walk.ts](../app/walk.ts)) takes `{start, close}`
+  and the `close:false` branch is an *open* walk (start ≠ end) — transit = `close:false`
+  + a bus-stop access. First slice (a 🚗↔🚌 switch, per the családi field note item 6 —
+  access-mode is a property of the *group*): `bus_stop` POIs are already ingested, so
+  bake each vertex's nearest *usable* bus stop in [graph/attach-access.ts](../graph/attach-access.ts)
+  (`Vertex.transitAccess`, mirroring parking); [app/main.ts](../app/main.ts) gets an
+  `accessMode` state — car draws parking + closed loop (`close:true`), transit draws
+  bus stops at *both* túra ends + open walk, a BKK/Mapy transit link instead of the
+  Google Maps drive link; hash `&a=car|transit`. This is literally the
+  [debütál field note](FIELD-NOTES-VANDOR-DEBUT.md) pattern: known stop, new direction,
+  bus back from a *nearer* stop.
 - [ ] **T9 · Planner (optimiser).** Score candidate itineraries on car duration,
-  hike length (~5–10 km), elevation, and awesomeness; return the best.
+  hike length (~5–10 km), elevation, and awesomeness; return the best. The real
+  input (per the [családi field note](FIELD-NOTES-CSALADI-TURA.md)) is a
+  **kényszer-profil** object, not a goal POI: max walk time/length, access mode,
+  restaurant-at-the-end flag, an avoid/"ismerős" filter (the spaced-repetition
+  inverse — invert `profile.ts` under a "család-mód"), parking-capacity in the
+  access ranking, and a meeting time+place field alongside the shared `#t=…&p=…` hash.
 
 ## Awesomeness — underfoot surface (current focus)
 

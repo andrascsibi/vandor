@@ -2,11 +2,20 @@ import "leaflet/dist/leaflet.css";
 import "./style.css";
 import * as L from "leaflet";
 import graphUrl from "../data/segments.json?url";
+import hospitalityUrl from "../data/hospitality.json?url";
 import type { Edge, SegmentGraph, Vertex } from "../graph/graph.ts";
 import { haversine } from "../graph/graph.ts";
+import type { HospitalityData, HospitalityPoi } from "../graph/attach-hospitality.ts";
+import {
+  hospitalityNear,
+  hospitalityIcon,
+  hospitalityTooltip,
+  segmentsNearHospitality,
+} from "./hospitality.ts";
 import { SZELL_KALMAN_TER } from "../ingest/overpass.ts";
 import {
   pickNovelSegment,
+  pickWalkedSegment,
   formatDistance,
   trailColour,
   poiLabel,
@@ -27,6 +36,16 @@ import {
 } from "./tour.ts";
 import { planWalk, type TourWalk } from "./walk.ts";
 import { surfaceClass, trailFraction, type SurfaceClass } from "./surface.ts";
+import {
+  DEFAULT_LENS,
+  LENSES,
+  LENS_META,
+  TURISTA_INTRO,
+  encodeLens,
+  parseLens,
+  rollLabel,
+  type Lens,
+} from "./lens.ts";
 import {
   buildRouteGraph,
   deadEndVertices,
@@ -61,6 +80,84 @@ const rollBtn = document.getElementById("roll") as HTMLButtonElement;
 const infoEl = document.getElementById("info") as HTMLDivElement;
 const mapyEl = document.getElementById("mapy") as HTMLAnchorElement;
 const gmapsEl = document.getElementById("gmaps") as HTMLAnchorElement;
+const lensesEl = document.getElementById("lenses") as HTMLDivElement;
+const rollLabelEl = document.getElementById("roll-label") as HTMLSpanElement;
+const compassEl = document.getElementById("compass") as HTMLDivElement;
+const compassToggle = document.getElementById("compass-toggle") as HTMLButtonElement;
+const compassModeEl = document.getElementById("compass-mode") as HTMLDivElement;
+const compassIntroEl = document.getElementById("compass-intro") as HTMLParagraphElement;
+const panelEl = document.getElementById("panel") as HTMLElement;
+const panelHandle = document.getElementById("panel-handle") as HTMLButtonElement;
+const panelActionsEl = document.getElementById("panel-actions") as HTMLDivElement;
+
+const isMobile = () => window.innerWidth <= 640;
+
+// Capitalise the first letter only (so "faj-turista" → "Faj-turista", not "Faj-Turista").
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+// The compass info box is collapsible; its state is sticky (localStorage). Default:
+// open on desktop (room to read Benedek's quotes), closed on mobile (keep the folded
+// panel compact — "basically just the compass").
+const COMPASS_EXPANDED_KEY = "vandor.compass.expanded";
+function loadCompassExpanded(): boolean {
+  try {
+    const stored = localStorage.getItem(COMPASS_EXPANDED_KEY);
+    if (stored !== null) return stored !== "0";
+  } catch {
+    /* storage blocked — fall through to the viewport default */
+  }
+  return !isMobile();
+}
+function saveCompassExpanded(v: boolean): void {
+  try {
+    localStorage.setItem(COMPASS_EXPANDED_KEY, v ? "1" : "0");
+  } catch {
+    /* private mode / storage full — the preference just won't persist */
+  }
+}
+let compassExpanded = loadCompassExpanded();
+function applyCompassExpanded(): void {
+  compassEl.classList.toggle("expanded", compassExpanded);
+  compassToggle.setAttribute("aria-expanded", String(compassExpanded));
+  const caret = compassToggle.querySelector(".compass-caret");
+  if (caret) caret.textContent = compassExpanded ? "▾" : "▸";
+}
+compassToggle.addEventListener("click", () => {
+  compassExpanded = !compassExpanded;
+  saveCompassExpanded(compassExpanded);
+  applyCompassExpanded();
+});
+
+// On mobile the panel folds down to just the compass so the map stays in view while
+// you throw the dice / switch lenses; the handle expands the túra body back, and
+// committing an action (roll, close-loop, fill-gap) re-collapses it. Collapsed is the
+// default. (On desktop the body is always shown — the class is a no-op there.)
+let panelExpanded = false;
+function applyPanelExpanded(): void {
+  panelEl.classList.toggle("panel-open", panelExpanded);
+  panelHandle.setAttribute("aria-expanded", String(panelExpanded));
+  const chevron = panelHandle.querySelector(".panel-handle-chevron");
+  if (chevron) chevron.textContent = panelExpanded ? "▴" : "▾";
+}
+function collapsePanel(): void {
+  if (!panelExpanded) return;
+  panelExpanded = false;
+  applyPanelExpanded();
+}
+panelHandle.addEventListener("click", () => {
+  panelExpanded = !panelExpanded;
+  applyPanelExpanded();
+});
+
+// Where each lens sits on the compass rose — the geography encodes the philosophy:
+// turista (N) opposite its shadow the kóca (S); faj-turista (E, the dawn climb)
+// opposite kultúrista (W, the sunset wine). See docs/TURISTA-LENSES.md.
+const LENS_POS: Record<Lens, "n" | "e" | "s" | "w"> = {
+  turista: "n",
+  fajturista: "e",
+  kocaturista: "s",
+  kulturista: "w",
+};
 
 function escapeHtml(s: string): string {
   const map: Record<string, string> = {
@@ -107,11 +204,31 @@ let network: L.LayerGroup | null = null; // base (non-túra) segments, canvas pa
 let tourLayer: L.LayerGroup | null = null; // the túra's highlighted segments + dots
 let emphasisLayer: L.LayerGroup | null = null; // the one segment hovered/tapped in the panel
 let accessLayer: L.LayerGroup | null = null; // candidate / chosen parking markers
+let hospitalityLayer: L.LayerGroup | null = null; // 🍷 kultúrista pins near the túra
 // Segment list starts collapsed on small screens so the panel doesn't eat the map.
 let segListExpanded = !window.matchMedia("(max-width: 640px)").matches;
 let tour: number[] = [];
 let chosenAccess: AccessCandidate | null = null; // the picked start parking
+// The active turista-lens (T12a). A lens is a reading of the land, not a planning
+// mode — it never touches the túra. Substrate for now: the switch works, highlights,
+// and rides along in the shared hash; the kultúrista/faj-turista/kóca overlays hang
+// off it in T12b–d. See docs/TURISTA-LENSES.md.
+let lens: Lens = DEFAULT_LENS;
+let lensBtns: HTMLButtonElement[] = [];
 let graphRef: SegmentGraph | null = null;
+// The committed hospitality layer (T12b), loaded once and split by kind: picnic is
+// the real turista's affair (everything in the backpack), food/drink the kultúrista's.
+// `nearTour` is the active lens's subset in sétatáv of the túra, set in `rebuild`.
+let allHospitality: HospitalityPoi[] = [];
+let picnicPois: HospitalityPoi[] = [];
+let foodDrinkPois: HospitalityPoi[] = [];
+let hospitalityNearTour: HospitalityPoi[] = [];
+// Trail seeds the kultúrista dob rolls from: natural-trail segments with food/drink
+// on or close to them (built once in `init`). Empty → the roll falls back to novelty.
+let kulturistaSeeds: Edge[] = [];
+// All trail-surface seeds (built in `init`) — the default novelty-roll pool, and the
+// fallback for lens rolls with an empty themed pool.
+let trailSeeds: Edge[] = [];
 const edgesById = new Map<number, Edge>();
 const edgeByKey = new Map<string, Edge>(); // stable key → edge, for shared links
 const vById = new Map<number, Vertex>();
@@ -281,6 +398,58 @@ function drawAccess(cands: AccessCandidate[]): void {
   accessLayer = L.layerGroup(layers).addTo(map);
 }
 
+// The anchors the 🍷 overlay hangs off: every distinct túra endpoint, plus the
+// chosen start parking (or all candidate parkings while none is picked) — the
+// places a turista starts from or ends at, and so would detour to eat around.
+function tourAnchors(cands: AccessCandidate[]): [number, number][] {
+  const anchors: [number, number][] = [];
+  const seen = new Set<number>();
+  for (const id of tour) {
+    const e = edgesById.get(id);
+    if (!e) continue;
+    for (const vid of [e.from, e.to]) {
+      if (seen.has(vid)) continue;
+      seen.add(vid);
+      const v = vById.get(vid);
+      if (v) anchors.push([v.lon, v.lat]);
+    }
+  }
+  for (const c of chosenAccess ? [chosenAccess] : cands) anchors.push([c.lon, c.lat]);
+  return anchors;
+}
+
+// Which hospitality the active lens reads from the land: picnic for the real
+// turista (who carries everything in the backpack — a piknik is his), food/drink
+// for the kultúrista (a piknik only annoys him; he brought nothing). Other lenses
+// draw no hospitality.
+function lensOverlayPois(): HospitalityPoi[] {
+  if (lens === "turista") return picnicPois;
+  if (lens === "kulturista") return foodDrinkPois;
+  return [];
+}
+
+// The hospitality overlay: an emoji pin at each POI in sétatáv of the túra. Which
+// kinds show depends on the lens (`lensOverlayPois`); `hospitalityNearTour` (set in
+// `rebuild`) is empty under every non-overlay lens, so switching away clears it.
+function drawHospitality(): void {
+  hospitalityLayer?.remove();
+  hospitalityLayer = null;
+  if (hospitalityNearTour.length === 0) return;
+  const markers = hospitalityNearTour.map((p) => {
+    const m = L.marker(toLatLng([p.lon, p.lat]), {
+      icon: L.divIcon({
+        className: "hmark-wrap",
+        html: `<div class="hmark">${hospitalityIcon(p.kind)}</div>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+      }),
+    });
+    m.bindTooltip(escapeHtml(hospitalityTooltip(p)), { direction: "top", offset: [0, -11] });
+    return m;
+  });
+  hospitalityLayer = L.layerGroup(markers).addTo(map);
+}
+
 function renderPanel(cands: AccessCandidate[]): void {
   if (tour.length === 0) {
     const done = distinctWalkedCount(profile);
@@ -290,6 +459,7 @@ function renderPanel(cands: AccessCandidate[]): void {
     infoEl.innerHTML =
       `<div class="hint">Dobj egyet, vagy kattints a térképen egy szakaszra — így építed fel a túrát.</div>` +
       tally;
+    panelActionsEl.innerHTML = ""; // no túra → no collapsed-mode actions
     return;
   }
   const oneWay = totalLengthM(tour, edgesById);
@@ -346,10 +516,31 @@ function renderPanel(cands: AccessCandidate[]): void {
   // open ends (dead-end spurs don't count — they're out-and-back). Routes them
   // back together over the rest of the net so you walk a loop, not a there-back.
   const liveEnds = tourOpenEnds(tour, edgesById).filter((v) => !allDeadEnds.has(v));
-  const loopBtn =
-    pieces === 1 && liveEnds.length >= 2
-      ? `<button class="close-loop" type="button">🔄 Zárd be a kört</button>`
-      : "";
+  const canLoop = pieces === 1 && liveEnds.length >= 2;
+  const loopBtn = canLoop
+    ? `<button class="close-loop" type="button">🔄 Zárd be a kört</button>`
+    : "";
+  // The same actions as icon-only pills for collapsed mode (reuse the classes so the
+  // one delegated handler on #panel drives both). Clear is always offered for a túra.
+  const actions: string[] = [];
+  if (pieces > 1)
+    actions.push(`<button class="pa-btn fill-gap" type="button" title="Töltsd ki a hézagot" aria-label="Töltsd ki a hézagot">🧩</button>`);
+  if (canLoop)
+    actions.push(`<button class="pa-btn close-loop" type="button" title="Zárd be a kört" aria-label="Zárd be a kört">🔄</button>`);
+  actions.push(`<button class="pa-btn clear" type="button" title="Ürítsd a túrát" aria-label="Ürítsd a túrát">🗑️</button>`);
+  panelActionsEl.innerHTML = actions.join("");
+  // The hospitality count in sétatáv of the túra. Under 🍷 kultúrista: étterem/büfé
+  // (the családi field note's "étterem sétatávban a végén"), with a quiet "nincs"
+  // when none. Under 🧭 turista: piknikhely, shown only when there are some so the
+  // default view stays uncluttered. Empty under the other lenses.
+  let hospLine = "";
+  if (lens === "kulturista") {
+    hospLine = hospitalityNearTour.length
+      ? `<div class="access hosp">🍴 ${hospitalityNearTour.length} vendéglátóhely a közelben</div>`
+      : `<div class="access sub">🍷 Nincs vendéglátás a túra közelében</div>`;
+  } else if (lens === "turista" && hospitalityNearTour.length) {
+    hospLine = `<div class="access sub">🧺 ${hospitalityNearTour.length} piknikhely a közelben</div>`;
+  }
   // The segment list is collapsible (tap the header) — closed by default on phones
   // so the panel doesn't cover the map.
   const caret = segListExpanded ? "▾" : "▸";
@@ -368,6 +559,7 @@ function renderPanel(cands: AccessCandidate[]): void {
     `<ul class="seg-list${segListExpanded ? "" : " collapsed"}">${rows}</ul>` +
     loopBtn +
     accessLine +
+    hospLine +
     walkedBtn() +
     `<button class="clear" type="button">Ürítsd a túrát</button>`;
 }
@@ -419,12 +611,62 @@ function updateLinks(): void {
   }
 }
 
-// Persist the túra in the URL hash so it's shareable (no history spam). We encode
-// the segments' stable keys, not their indices, so a shared link survives a graph
-// re-ingest (see tour.ts).
+// Persist the túra + active lens in the URL hash so it's shareable (no history
+// spam). We encode the segments' stable keys, not their indices, so a shared link
+// survives a graph re-ingest (see tour.ts); the lens rides along too (lens.ts), the
+// default encoding to "" so plain links stay clean.
 function syncHash(): void {
-  const body = encodeTourHash(tourKeys(), chosenAccess);
+  const body = [encodeTourHash(tourKeys(), chosenAccess), encodeLens(lens)].filter(Boolean).join("&");
   history.replaceState(null, "", body ? `#${body}` : location.pathname + location.search);
+}
+
+// Build the compass's lens buttons once (icons from LENS_META, so the vocabulary has
+// one home), each placed on its cardinal point of the rose.
+function renderLensBar(): void {
+  lensBtns = LENSES.map((l) => {
+    const m = LENS_META[l];
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `lens pos-${LENS_POS[l]}`;
+    btn.dataset.lens = l;
+    btn.textContent = m.icon;
+    btn.title = `${m.label} — ${m.note}`;
+    btn.setAttribute("aria-label", m.label);
+    btn.setAttribute("aria-pressed", String(l === lens));
+    btn.addEventListener("click", () => setLens(l));
+    return btn;
+  });
+  lensesEl.replaceChildren(...lensBtns);
+}
+
+// Reflect the current lens into the DOM without re-planning: the pressed compass
+// button, a body data-attribute (a styling/behaviour hook for the lens overlays), the
+// dice caption (+ aria), and the info box's card for this turista — Benedek's
+// characterisation plus what the app does (flagged "hamarosan" while an overlay is
+// still substrate).
+function reflectLens(): void {
+  document.body.dataset.lens = lens;
+  for (const btn of lensBtns) btn.setAttribute("aria-pressed", String(btn.dataset.lens === lens));
+  const m = LENS_META[lens];
+  // Each lens rolls with its own strategy, so the caption (and the dice's accessible
+  // label) name the active one. The 🎲 glyph on the button stays put.
+  const label = rollLabel(lens);
+  rollLabelEl.textContent = label;
+  rollBtn.setAttribute("aria-label", label);
+  const appLine = m.implemented ? m.note : `${m.note} — hamarosan`;
+  compassModeEl.innerHTML =
+    `<p class="ci-mode-head">${m.icon} ${escapeHtml(capitalize(m.label))}</p>` +
+    `<p class="ci-mode-quote">„${escapeHtml(m.blurb)}"</p>` +
+    `<p class="ci-mode-app">${escapeHtml(appLine)}</p>`;
+}
+
+// Switch lenses: update the UI, then rebuild so any lens-dependent layers refresh
+// (none yet in T12a) and the new lens is written into the shareable hash.
+function setLens(next: Lens): void {
+  if (next === lens) return;
+  lens = next;
+  reflectLens();
+  rebuild();
 }
 
 // Frame the whole túra (plus its chosen start, or all access candidates).
@@ -453,16 +695,24 @@ function rebuild(): void {
   // headline distance and the Mapy link all read off this.
   const startPt = chosenAccess ? ([chosenAccess.lon, chosenAccess.lat] as [number, number]) : undefined;
   walk = planWalk(tour, edgesById, vById, { start: startPt, close: !!chosenAccess });
+  // The hospitality overlay reads the land around the túra — the kinds the active
+  // lens cares about (picnic for turista, food/drink for kultúrista), in sétatáv.
+  const overlayPois = lensOverlayPois();
+  hospitalityNearTour = overlayPois.length ? hospitalityNear(overlayPois, tourAnchors(cands)) : [];
   drawTour();
   drawNetwork();
   drawAccess(cands);
+  drawHospitality();
   renderPanel(cands);
   updateLinks();
   syncHash();
 }
 
-// Panel interactions: remove one segment, or clear the whole túra.
-infoEl.addEventListener("click", (ev) => {
+// Panel interactions (delegated on the whole hub so the collapsed-mode action pills
+// in #panel-actions share the handlers with the body's text buttons). The compass's
+// own controls — lens toggles, the dice, the caption and handle — carry no matching
+// class, so they fall through here to their dedicated listeners.
+panelEl.addEventListener("click", (ev) => {
   const target = ev.target as HTMLElement;
   const remove = target.closest(".seg-remove") as HTMLElement | null;
   if (remove) {
@@ -496,6 +746,7 @@ infoEl.addEventListener("click", (ev) => {
         tour = [...tour, ...added];
         rebuild();
         fitTour();
+        collapsePanel(); // reveal the filled-in túra on the map
       }
     }
     return;
@@ -507,6 +758,7 @@ infoEl.addEventListener("click", (ev) => {
         tour = [...tour, ...added];
         rebuild();
         fitTour();
+        collapsePanel(); // reveal the closed loop on the map
       }
     }
     return;
@@ -541,19 +793,62 @@ async function init(): Promise<void> {
   }
   for (const v of graph.vertices) vById.set(v.id, v);
 
+  // The 🍷 hospitality layer (T12b). Non-fatal if absent (run `npm run graph`).
+  try {
+    const hosp = (await fetch(hospitalityUrl).then((r) => r.json())) as HospitalityData;
+    allHospitality = hosp.pois ?? [];
+  } catch {
+    allHospitality = [];
+  }
+  // Split by kind once: picnic belongs to the turista overlay, food/drink to the
+  // kultúrista overlay + its roll pool.
+  picnicPois = allHospitality.filter((p) => p.kind === "picnic");
+  foodDrinkPois = allHospitality.filter((p) => p.kind !== "picnic");
+
   routeGraph = buildRouteGraph(graph.edges);
   allDeadEnds = deadEndVertices(graph.edges);
 
-  // "Vándor dob" starts a fresh túra from a seed segment — only ever a natural
-  // trail (T10a), never a settlement street or motor road — and favouring the
-  // untrodden over trails you've already walked (the north star: novelty-weighted).
-  const trailSeeds = graph.edges.filter((e) => surfaceClass(e.highway) === "trail");
+  // Build the compass and adopt any lens from the opening hash (shared link).
+  lens = parseLens(location.hash);
+  compassIntroEl.textContent = TURISTA_INTRO;
+  applyCompassExpanded();
+  applyPanelExpanded();
+  renderLensBar();
+  reflectLens();
+
+  // The dob starts a fresh túra from a seed segment — only ever a natural trail
+  // (T10a), never a settlement street or motor road. Each lens then rolls with its
+  // own strategy (T12b): the land it reads shapes what "véletlen" means.
+  trailSeeds = graph.edges.filter((e) => surfaceClass(e.highway) === "trail");
+  // The kultúrista dob rolls from trail seeds with food/drink on or close to them.
+  kulturistaSeeds = segmentsNearHospitality(trailSeeds, foodDrinkPois);
+
+  const novelty = () => pickNovelSegment(trailSeeds.length ? trailSeeds : graph.edges, profile);
+  // Per-lens seed strategy:
+  //  🧭 turista   — the north star: favour the untrodden (novelty-weighted).
+  //  🍷 kultúrista — land near food/drink (novelty within that themed pool).
+  //  🩸 faj-turista — the steepest; pending the T12c SRTM DEM → novelty for now.
+  //  🐷 kóca       — the anti-Vándor: re-tread an already-walked path; novelty until
+  //                 the profile has one.
+  const rollSeed = (): Edge => {
+    switch (lens) {
+      case "kulturista":
+        return kulturistaSeeds.length ? pickNovelSegment(kulturistaSeeds, profile) : novelty();
+      case "kocaturista":
+        return pickWalkedSegment(graph.edges, profile) ?? novelty();
+      case "fajturista":
+      case "turista":
+      default:
+        return novelty();
+    }
+  };
   const roll = () => {
-    const seed = pickNovelSegment(trailSeeds.length ? trailSeeds : graph.edges, profile);
+    const seed = rollSeed();
     tour = [seed.id];
     chosenAccess = null;
     rebuild();
     fitTour();
+    collapsePanel(); // show the fresh segment on the map, not behind the panel
   };
 
   // Restore a shared túra from the URL hash; returns false if there's nothing valid.
@@ -578,7 +873,11 @@ async function init(): Promise<void> {
   rollBtn.addEventListener("click", roll);
   map.on("moveend", drawNetwork); // keep the base network in sync on pan/zoom
   // A pasted/edited link navigates the túra; our own writes use replaceState.
-  window.addEventListener("hashchange", loadFromHash);
+  window.addEventListener("hashchange", () => {
+    lens = parseLens(location.hash); // adopt a pasted link's lens too
+    reflectLens();
+    loadFromHash();
+  });
   if (!loadFromHash()) roll(); // open a shared túra, else land on a random one
 }
 

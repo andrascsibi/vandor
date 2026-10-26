@@ -11,11 +11,13 @@ import { NAMING_KINDS, type PoiFeature, type PoiFeatureCollection } from "../ing
 import { buildSegmentGraph, dedupeEdgeKeys } from "./graph.ts";
 import { attachPois } from "./attach-pois.ts";
 import { attachAccess, usableParking } from "./attach-access.ts";
+import { clipToNetwork, HOSPITALITY_CLIP_M } from "./attach-hospitality.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const IN_PATH = resolve(__dirname, "../raw/trails.geojson");
 const POI_PATH = resolve(__dirname, "../raw/pois.geojson");
 const OUT_PATH = resolve(__dirname, "../data/segments.json");
+const HOSPITALITY_PATH = resolve(__dirname, "../data/hospitality.json");
 
 async function main(): Promise<void> {
   const fc = JSON.parse(await readFile(IN_PATH, "utf8")) as TrailFeatureCollection;
@@ -69,6 +71,18 @@ async function main(): Promise<void> {
   console.log(
     `  total trail ${(total / 1000).toFixed(1)} km · median segment ${median} m`,
   );
+
+  // T12b: the 🍷 kultúrista overlay. Hospitality is a context-POI, not a graph
+  // vertex — extract it from the shared ingest and clip to within ~600 m of the
+  // trail network, so the committed set is small and hegyvidéki.
+  const hospitality = clipToNetwork(allPois, graph);
+  await writeFile(HOSPITALITY_PATH, JSON.stringify({ pois: hospitality }) + "\n", "utf8");
+  const byHosp: Record<string, number> = {};
+  for (const p of hospitality) byHosp[p.kind] = (byHosp[p.kind] ?? 0) + 1;
+  console.log(
+    `  ${hospitality.length} hospitality POIs within ${HOSPITALITY_CLIP_M} m of the net → ${HOSPITALITY_PATH}`,
+  );
+  console.log(`  by kind: ${JSON.stringify(byHosp)}`);
 }
 
 main().catch((err) => {

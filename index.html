@@ -13,16 +13,58 @@
     <div id="map"></div>
 
     <aside id="panel">
-      <header class="brand">Vándor <span aria-hidden="true">🧭</span></header>
-      <button id="roll" type="button">🎲 Vándor dob</button>
-      <div id="info" class="info"><div class="hint">Töltés…</div></div>
-      <a id="mapy" class="mapy" target="_blank" rel="noopener noreferrer" aria-disabled="true"
-        >Nyisd meg Mapyn ↗</a
+      <!-- The turista-iránytű (T12b): the four lenses on a compass rose — 🧭 turista N /
+           🐷 kóca S (turista vs anti-turista), 🍷 kultúrista W / 🩸 faj-turista E — around
+           the central dice (the primary action, rolling with the active lens's strategy).
+           The ring is the unity of a real turista's aspects (King/Warrior/Mage/Lover). The
+           caption toggles an info box with Benedek István's characterisation of each type.
+           Floats top-right on desktop; folds into the panel top on mobile. -->
+      <div id="compass" class="compass expanded">
+        <div class="compass-ring">
+          <div id="lenses" class="lenses" role="group" aria-label="Turista-lencse"></div>
+          <button id="roll" class="roll" type="button" aria-label="Vándor dob">🎲</button>
+        </div>
+        <button id="compass-toggle" class="compass-toggle" type="button" aria-expanded="true" aria-controls="compass-info">
+          <span id="roll-label" class="roll-label">Vándor dob</span>
+          <span class="compass-caret" aria-hidden="true">▾</span>
+        </button>
+        <div id="compass-info" class="compass-info">
+          <p id="compass-intro" class="ci-intro"></p>
+          <div id="compass-mode" class="ci-mode"></div>
+        </div>
+      </div>
+
+      <!-- Collapsed-mode túra actions as icon-only buttons (loop / fill / empty), shown
+           beside the compass when the body is folded away so you can act without expanding.
+           Populated by renderPanel; same classes as the body's text buttons, so one
+           delegated handler drives both. -->
+      <div id="panel-actions" class="panel-actions"></div>
+
+      <!-- On mobile the panel folds down to just the compass; this handle expands the
+           túra body back (rolling the dice or committing a tour action re-collapses it,
+           so the map is free while you throw the dice / switch lenses). Hidden on desktop,
+           where the body is always shown. -->
+      <button
+        id="panel-handle"
+        class="panel-handle"
+        type="button"
+        aria-expanded="false"
+        aria-controls="panel-body"
+        aria-label="Túra részletei"
       >
-      <a id="gmaps" class="mapy gmaps" target="_blank" rel="noopener noreferrer" aria-disabled="true"
-        >Autóval a parkolóhoz (Google Maps) ↗</a
-      >
-      <p class="tip">Kattints a szakaszokra: hozzáadás / elvétel. A Mapy link a teljes túrát nyitja meg.</p>
+        <span class="panel-handle-chevron" aria-hidden="true">▾</span>
+      </button>
+
+      <div id="panel-body" class="panel-body">
+        <div id="info" class="info"><div class="hint">Töltés…</div></div>
+        <a id="mapy" class="mapy" target="_blank" rel="noopener noreferrer" aria-disabled="true"
+          >Nyisd meg Mapyn ↗</a
+        >
+        <a id="gmaps" class="mapy gmaps" target="_blank" rel="noopener noreferrer" aria-disabled="true"
+          >Autóval a parkolóhoz (Google Maps) ↗</a
+        >
+        <p class="tip">Kattints a szakaszokra: hozzáadás / elvétel. A Mapy link a teljes túrát nyitja meg.</p>
+      </div>
     </aside>
 
     <script type="module" src="/app/main.ts"></script>

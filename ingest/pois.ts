@@ -9,8 +9,8 @@
 
 import type { BBox } from "./overpass.ts";
 
-/** The POI categories we ingest, in attach-priority order (most "nameable" first). */
-export const POI_KINDS = [
+/** Structural POI categories, in attach-priority order (most "nameable" first). */
+const STRUCTURAL_KINDS = [
   "peak",
   "saddle",
   "viewpoint",
@@ -19,6 +19,17 @@ export const POI_KINDS = [
   "parking",
   "bus_stop",
 ] as const;
+
+/**
+ * Hospitality categories (T12b, the 🍷 kultúrista overlay). These are
+ * *context-POIs*, never graph vertices — they ride in the same ingest but are
+ * extracted and clipped to the trail network separately (graph/attach-hospitality).
+ */
+export const HOSPITALITY_KINDS = ["food", "drink", "picnic"] as const;
+export type HospitalityKind = (typeof HOSPITALITY_KINDS)[number];
+
+/** Every POI category we ingest (structural endpoints/access + hospitality). */
+export const POI_KINDS = [...STRUCTURAL_KINDS, ...HOSPITALITY_KINDS] as const;
 export type PoiKind = (typeof POI_KINDS)[number];
 
 /** Named POIs worth showing as a segment endpoint (vs. access-only POIs). */
@@ -95,10 +106,48 @@ export function buildPoiQuery(bbox: BBox, timeoutSec = 180): string {
     node('["amenity"="parking"]'),
     way('["amenity"="parking"]'),
     node('["highway"="bus_stop"]'),
+    // Hospitality (T12b): where a turista eats/drinks. Nodes AND ways — a
+    // restaurant or biergarten is commonly mapped as a building/area.
+    node('["amenity"="restaurant"]'),
+    way('["amenity"="restaurant"]'),
+    node('["amenity"="cafe"]'),
+    way('["amenity"="cafe"]'),
+    node('["amenity"="fast_food"]'),
+    way('["amenity"="fast_food"]'),
+    node('["amenity"="pub"]'),
+    way('["amenity"="pub"]'),
+    node('["amenity"="bar"]'),
+    way('["amenity"="bar"]'),
+    node('["amenity"="biergarten"]'),
+    way('["amenity"="biergarten"]'),
+    node('["tourism"="picnic_site"]'),
+    way('["tourism"="picnic_site"]'),
     ");",
     // `out center` gives node coords directly and a center point for ways/areas.
     "out center;",
   ].join("\n");
+}
+
+/**
+ * Classify hospitality tags into a HospitalityKind, or undefined. Eat-out
+ * amenities are `food`, drink-led ones `drink`, and picnic sites `picnic`.
+ * Pure and exported so the mapping is unit-testable (T12b).
+ */
+export function classifyHospitality(
+  tags: Record<string, string>,
+): HospitalityKind | undefined {
+  switch (tags.amenity) {
+    case "restaurant":
+    case "fast_food":
+      return "food";
+    case "cafe":
+    case "pub":
+    case "bar":
+    case "biergarten":
+      return "drink";
+  }
+  if (tags.tourism === "picnic_site") return "picnic";
+  return undefined;
 }
 
 /** Classify an element's tags into a PoiKind (priority order), or undefined. */
@@ -110,7 +159,7 @@ function classify(tags: Record<string, string>): PoiKind | undefined {
   if (tags.amenity === "shelter") return "shelter";
   if (tags.amenity === "parking") return "parking";
   if (tags.highway === "bus_stop") return "bus_stop";
-  return undefined;
+  return classifyHospitality(tags);
 }
 
 /** Parse an elevation tag ("432", "432 m") to a number, or undefined. */

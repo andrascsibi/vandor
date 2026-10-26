@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { BUDA_HILLS_BBOX } from "./overpass.ts";
 import {
   buildPoiQuery,
+  classifyHospitality,
   poisToGeoJson,
   type OverpassPoiResponse,
 } from "./pois.ts";
@@ -23,6 +24,42 @@ describe("buildPoiQuery", () => {
   it("queries ways too for area-mapped amenities (shelter, parking)", () => {
     expect(query).toContain('way["amenity"="shelter"]');
     expect(query).toContain('way["amenity"="parking"]');
+  });
+
+  it("unions the hospitality selectors too (T12b kultúrista overlay)", () => {
+    expect(query).toContain('node["amenity"="restaurant"]');
+    expect(query).toContain('node["amenity"="cafe"]');
+    expect(query).toContain('node["amenity"="fast_food"]');
+    expect(query).toContain('node["amenity"="pub"]');
+    expect(query).toContain('node["amenity"="bar"]');
+    expect(query).toContain('node["amenity"="biergarten"]');
+    expect(query).toContain('node["tourism"="picnic_site"]');
+    // restaurants/biergartens are often mapped as areas → ways with `out center`.
+    expect(query).toContain('way["amenity"="restaurant"]');
+  });
+});
+
+describe("classifyHospitality", () => {
+  it("maps eat-out amenities to food", () => {
+    expect(classifyHospitality({ amenity: "restaurant" })).toBe("food");
+    expect(classifyHospitality({ amenity: "fast_food" })).toBe("food");
+  });
+
+  it("maps drink-led amenities to drink", () => {
+    expect(classifyHospitality({ amenity: "cafe" })).toBe("drink");
+    expect(classifyHospitality({ amenity: "pub" })).toBe("drink");
+    expect(classifyHospitality({ amenity: "bar" })).toBe("drink");
+    expect(classifyHospitality({ amenity: "biergarten" })).toBe("drink");
+  });
+
+  it("maps picnic sites to picnic", () => {
+    expect(classifyHospitality({ tourism: "picnic_site" })).toBe("picnic");
+  });
+
+  it("returns undefined for non-hospitality tags", () => {
+    expect(classifyHospitality({ natural: "peak" })).toBeUndefined();
+    expect(classifyHospitality({ amenity: "parking" })).toBeUndefined();
+    expect(classifyHospitality({})).toBeUndefined();
   });
 });
 
@@ -76,5 +113,21 @@ describe("poisToGeoJson", () => {
     expect(parking.properties.osmType).toBe("way");
     expect(parking.geometry.coordinates).toEqual([18.98, 47.54]);
     expect(parking.properties.access).toBe("yes");
+  });
+
+  it("classifies hospitality POIs into food/drink/picnic kinds", () => {
+    const hosp = poisToGeoJson({
+      elements: [
+        { type: "node", id: 10, lat: 47.5, lon: 18.9, tags: { amenity: "restaurant", name: "Nagyrét Büfé" } },
+        { type: "node", id: 11, lat: 47.5, lon: 18.9, tags: { amenity: "cafe" } },
+        { type: "way", id: 12, center: { lat: 47.5, lon: 18.9 }, tags: { amenity: "biergarten", name: "Sörkert" } },
+        { type: "node", id: 13, lat: 47.5, lon: 18.9, tags: { tourism: "picnic_site" } },
+      ],
+    });
+    const byId = new Map(hosp.features.map((f) => [f.id, f.properties.kind]));
+    expect(byId.get(10)).toBe("food");
+    expect(byId.get(11)).toBe("drink");
+    expect(byId.get(12)).toBe("drink");
+    expect(byId.get(13)).toBe("picnic");
   });
 });
