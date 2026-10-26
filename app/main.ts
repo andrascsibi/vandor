@@ -71,10 +71,11 @@ L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
 
 // Base layer: every in-viewport segment, drawn thin on a canvas pane *below* the
 // selected-segment highlight so the pick still pops. Canvas handles ~1000 lines
-// and gives cheap click hit-testing with a little tolerance for thin lines.
+// and gives cheap click hit-testing. The tolerance fattens each thin line's hit
+// area well beyond its 3.5px stroke so a tap (esp. on mobile) lands reliably.
 map.createPane("network");
 map.getPane("network")!.style.zIndex = "350";
-const netRenderer = L.canvas({ pane: "network", padding: 0.5, tolerance: 6 });
+const netRenderer = L.canvas({ pane: "network", padding: 0.5, tolerance: 14 });
 
 const rollBtn = document.getElementById("roll") as HTMLButtonElement;
 const infoEl = document.getElementById("info") as HTMLDivElement;
@@ -302,16 +303,23 @@ function drawTour(): void {
     layers.push(L.polyline(latlngs, { color: "#fff", weight: 11, opacity: 0.95, interactive: false }));
     // Dash/dot the highlight by surface too (over the solid white casing, so gaps
     // read as white) — the turista sees at a glance how much of the túra is paved.
-    const line = L.polyline(latlngs, {
-      color: trailColour(edge.colours),
-      weight: 6,
-      opacity: 1,
-      dashArray: HIGHLIGHT_DASH[surfaceClass(edge.highway)],
-    });
-    line.on("click", () => toggleInTour(id));
-    line.on("mouseover", () => { map.getContainer().style.cursor = "pointer"; });
-    line.on("mouseout", () => { map.getContainer().style.cursor = ""; });
-    layers.push(line);
+    layers.push(
+      L.polyline(latlngs, {
+        color: trailColour(edge.colours),
+        weight: 6,
+        opacity: 1,
+        dashArray: HIGHLIGHT_DASH[surfaceClass(edge.highway)],
+        interactive: false,
+      }),
+    );
+    // A fat, invisible hit-line over the casing so a selected segment is easy to
+    // tap off (the visible 6px line is a tiny target, esp. on mobile). The click
+    // removes the segment; this is the only interactive layer of the three.
+    const hit = L.polyline(latlngs, { color: "#000", weight: 26, opacity: 0, lineCap: "round" });
+    hit.on("click", () => toggleInTour(id));
+    hit.on("mouseover", () => { map.getContainer().style.cursor = "pointer"; });
+    hit.on("mouseout", () => { map.getContainer().style.cursor = ""; });
+    layers.push(hit);
     for (const vid of [edge.from, edge.to]) {
       if (dotSeen.has(vid)) continue;
       dotSeen.add(vid);
