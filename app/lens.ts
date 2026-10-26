@@ -30,40 +30,40 @@ export const LENS_META: Record<Lens, LensMeta> = {
   turista: {
     icon: "🧭",
     label: "turista",
-    note: "Az út a cél — véletlen szakasz a bejáratlanból.",
+    note: "Járt utat a járatlanért MINDIG hagyd el.",
     blurb:
-      "Az igazi turista: aki a természetet, a vele való harmóniát élvezi, és ezért teljesítményre is képes — legyőzve akadályokat, legyőzve önmagát.",
+      "A csúcson kétszeresen jól érzi magát: élvezi a természet szépségét és a megtett utat, a nehézségek legyőzését.",
     implemented: true,
   },
   kulturista: {
     icon: "🍷",
-    label: "kultúrista",
-    note: "Vendéglátás a túra körül — amire egy rendes turista költ.",
+    label: "kulturista",
+    note: "Vendéglátás a túra körül, túra a vendéglátás körül.",
     blurb:
-      "Aki szereti a természetet, s amolyan széplélekként oda jár gyönyörködni, pihenni — ha ez erőfeszítésébe nem kerül.",
+      "Fölsétál addig, ameddig kényelmesen feljuthat, pihen és gyönyörködik, nem veti meg a kilátóhelyen létesített vendéglőket.",
     implemented: true,
   },
   fajturista: {
     icon: "🩸",
-    label: "faj-turista",
+    label: "fajturista",
     note: "A legmeredekebb szakaszok rangsora.",
     blurb:
-      "Ő csak a teljesítményt élvezi, s így rengeteg szépség, ismeret mellett megy el.",
+      "Olyan, mint a tisztafajú tenyészállat. Ő csak a teljesítményt élvezi.",
     implemented: false,
   },
   kocaturista: {
     icon: "🐷",
-    label: "kóca-turista",
-    note: "Felszerelés-boltok a közelben.",
+    label: "kocaturista",
+    note: "Népszerű és már bejárt szakaszok.",
     blurb:
-      "Ragyogó, drága felszereléssel lötyög ide-oda, mindig többet mutatva, mint amire valójában képes.",
+      "Előkelően kiöltözve és szakszerűen fölszerelve ide-oda lötyög s mindig többet mutat, mint amennyire valójában képes.",
     implemented: false,
   },
 };
 
 /** The framing line above the four turistas in the compass info box. */
 export const TURISTA_INTRO =
-  "Az emberiség két részre oszlik: aki turista, és aki nem. Turistából is legalább négyféle van — Benedek István nyomán:";
+  "Benedek István nyomán négyféle turistát különböztetünk meg. Te melyikkel azonosulsz ma?";
 
 /** Type guard: is this string one of our lenses? */
 export function isLens(s: string | null | undefined): s is Lens {
@@ -73,7 +73,7 @@ export function isLens(s: string | null | undefined): s is Lens {
 /**
  * The "dob" caption under a lens (T12b). Each lens rolls with its own strategy —
  * so the caption names the active one: the brand "Vándor dob" for the default
- * turista, "<Lens> dob" otherwise (e.g. "Kultúrista dob"). The 🎲 glyph lives on
+ * turista, "<Lens> dob" otherwise (e.g. "Kulturista dob"). The 🎲 glyph lives on
  * the central dice button of the compass, not in this text.
  */
 export function rollLabel(lens: Lens): string {

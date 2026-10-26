@@ -23,9 +23,9 @@ describe("lens vocabulary", () => {
 
   it("names the dob per lens — brand for the default, <Lens> dob otherwise (no 🎲)", () => {
     expect(rollLabel("turista")).toBe("Vándor dob");
-    expect(rollLabel("kulturista")).toBe("Kultúrista dob");
-    expect(rollLabel("fajturista")).toBe("Faj-turista dob");
-    expect(rollLabel("kocaturista")).toBe("Kóca-turista dob");
+    expect(rollLabel("kulturista")).toBe("Kulturista dob");
+    expect(rollLabel("fajturista")).toBe("Fajturista dob");
+    expect(rollLabel("kocaturista")).toBe("Kocaturista dob");
   });
 
   it("isLens guards known values", () => {
