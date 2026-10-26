@@ -20,14 +20,19 @@
            caption toggles an info box with Benedek István's characterisation of each type.
            Floats top-right on desktop; folds into the panel top on mobile. -->
       <div id="compass" class="compass expanded">
-        <div class="compass-ring">
-          <div id="lenses" class="lenses" role="group" aria-label="Turista-lencse"></div>
-          <button id="roll" class="roll" type="button" aria-label="Vándor dob">🎲</button>
+        <!-- Ring + caption share a ring-width column so the caption pill centres under
+             the rose, while the column itself stays pinned to the hub's right edge. The
+             info box sits outside it and can grow wider. -->
+        <div class="compass-head">
+          <div class="compass-ring">
+            <div id="lenses" class="lenses" role="group" aria-label="Turista-lencse"></div>
+            <button id="roll" class="roll" type="button" aria-label="Vándor dob">🎲</button>
+          </div>
+          <button id="compass-toggle" class="compass-toggle" type="button" aria-expanded="true" aria-controls="compass-info">
+            <span id="roll-label" class="roll-label">Vándor dob</span>
+            <span class="compass-caret" aria-hidden="true">▾</span>
+          </button>
         </div>
-        <button id="compass-toggle" class="compass-toggle" type="button" aria-expanded="true" aria-controls="compass-info">
-          <span id="roll-label" class="roll-label">Vándor dob</span>
-          <span class="compass-caret" aria-hidden="true">▾</span>
-        </button>
         <div id="compass-info" class="compass-info">
           <p id="compass-intro" class="ci-intro"></p>
           <div id="compass-mode" class="ci-mode"></div>

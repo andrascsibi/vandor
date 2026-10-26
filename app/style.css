@@ -110,13 +110,25 @@ body {
   pointer-events: none;
 }
 
+/* Ring + caption, in a column only as wide as the ring so the pill centres under the
+   rose. Right-aligned within the compass (which can be wider when the info box opens),
+   so the rose stays pinned to the hub's right edge. */
+.compass-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  pointer-events: none;
+}
+
 .compass-ring {
   position: relative;
   width: 188px;
   height: 188px;
-  /* Inner radius of the four sectors — the hole they leave for the dice. Overridden
-     a touch smaller on mobile where the ring shrinks. */
-  --hole: 46px;
+  /* The sectors are an annular band: --hole (inner) hugs the dice's white rim, --outer
+     caps their reach. Both shrink on mobile with the ring. */
+  --hole: 39px;
+  --outer: 84px;
 }
 
 /* The four lenses are no longer round pips but bent-trapezoid sectors of a donut
@@ -137,12 +149,13 @@ body {
   padding: 0;
   border: none;
   border-radius: 50%;
-  /* Near-solid paper so the rose reads as one control, not a window onto the map. */
-  background: rgba(252, 251, 247, 0.95);
+  /* Solid paper so the rose reads as one control, not a window onto the map. */
+  background: var(--paper);
   cursor: pointer;
   pointer-events: auto;
-  -webkit-mask: radial-gradient(circle at 50% 50%, transparent 0 var(--hole), #000 var(--hole));
-  mask: radial-gradient(circle at 50% 50%, transparent 0 var(--hole), #000 var(--hole));
+  /* Band mask: transparent inside --hole, opaque --hole→--outer, transparent beyond. */
+  -webkit-mask: radial-gradient(circle at 50% 50%, #0000 0 var(--hole), #000 var(--hole) var(--outer), #0000 var(--outer));
+  mask: radial-gradient(circle at 50% 50%, #0000 0 var(--hole), #000 var(--hole) var(--outer), #0000 var(--outer));
   transition: background 0.12s ease;
 }
 
@@ -166,19 +179,19 @@ body {
   filter: grayscale(0.55);
   transition: opacity 0.12s ease, filter 0.12s ease;
 }
-.lens.pos-n .lens-glyph { top: 13%; }
-.lens.pos-s .lens-glyph { top: 87%; }
-.lens.pos-e .lens-glyph { left: 87%; }
-.lens.pos-w .lens-glyph { left: 13%; }
+.lens.pos-n .lens-glyph { top: 17%; }
+.lens.pos-s .lens-glyph { top: 83%; }
+.lens.pos-e .lens-glyph { left: 83%; }
+.lens.pos-w .lens-glyph { left: 17%; }
 
 .lens:hover .lens-glyph {
   opacity: 1;
   filter: none;
 }
 
-/* The active sector lights up trail-orange; its glyph comes to full colour. */
+/* The active sector lights up a warm (opaque) orange; its glyph comes to full colour. */
 .lens[aria-pressed="true"] {
-  background: rgba(232, 89, 12, 0.32);
+  background: #f3b48f;
 }
 
 .lens[aria-pressed="true"] .lens-glyph {
@@ -186,9 +199,10 @@ body {
   filter: none;
 }
 
-/* The dice's knob: a trail-orange triangle on the dice edge pointing at the active
-   lens's sector. --knob-angle (0/90/180/270deg) is set from the lens in reflectLens;
-   the triangle points up by default (north), then swings round. Sits above the dice. */
+/* The dice's knob: a white triangle on the dice edge pointing at the active lens's
+   sector — reads as an extension of the dice's white rim, and stands out against the
+   orange active petal it sits on. --knob-angle (0/90/180/270deg) is set from the lens
+   in reflectLens; the triangle points up by default (north), then swings round. */
 .compass-ring::after {
   content: "";
   position: absolute;
@@ -198,10 +212,10 @@ body {
   height: 0;
   border-left: 7px solid transparent;
   border-right: 7px solid transparent;
-  border-bottom: 10px solid var(--trail);
+  border-bottom: 10px solid #fff;
   transform: translate(-50%, -50%) rotate(var(--knob-angle, 0deg)) translateY(-42px);
   transform-origin: center;
-  filter: drop-shadow(0 0 1.5px var(--paper));
+  filter: drop-shadow(0 1px 1.5px rgba(40, 30, 15, 0.35));
   pointer-events: none;
   z-index: 2;
   transition: transform 0.18s ease;
@@ -646,8 +660,8 @@ body {
   }
 
   /* Trim the compass a touch so it doesn't crowd a small screen. */
-  .compass-ring { width: 170px; height: 170px; --hole: 42px; }
-  .compass-ring::after { transform: translate(-50%, -50%) rotate(var(--knob-angle, 0deg)) translateY(-39px); }
+  .compass-ring { width: 170px; height: 170px; --hole: 36px; --outer: 76px; }
+  .compass-ring::after { transform: translate(-50%, -50%) rotate(var(--knob-angle, 0deg)) translateY(-38px); }
   .lens-glyph { font-size: 1.12rem; }
   .roll { width: 64px; height: 64px; font-size: 1.7rem; }
 
