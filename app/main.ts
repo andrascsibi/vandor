@@ -564,19 +564,19 @@ function renderPanel(cands: AccessCandidate[]): void {
     trailFraction(walk.steps.map((s) => edgesById.get(s.id)).filter((e): e is Edge => !!e)) * 100,
   );
   // A "how far from town" metric, shown both in the header and on the collapsed-mode
-  // expand chevron. With a chosen start it's the crow-flies from Széll Kálmán tér to
-  // that parking (how far you drive out); with none chosen yet, the distance to the
-  // closest parking so you can gauge access before picking one.
+  // expand chevron: the crow-flies from Széll Kálmán tér out to the parking — the
+  // chosen start once picked, otherwise the candidate parking nearest to Széll (the
+  // likeliest start), so the figure stays a consistent drive-out distance either way.
   let accessText = "";
   let accessTitle = "";
+  const szellOf = (c: { lon: number; lat: number }) => haversine([c.lon, c.lat], SZELL);
   if (chosenAccess) {
-    const szell = haversine([chosenAccess.lon, chosenAccess.lat], SZELL);
-    accessText = `🚗 ${formatDistance(szell)}`;
+    accessText = `🚗 ${formatDistance(szellOf(chosenAccess))}`;
     accessTitle = "Széll Kálmán tértől a parkolóig (madártávlat)";
   } else if (cands.length) {
-    const nearest = cands.reduce((a, b) => (b.distM < a.distM ? b : a));
-    accessText = `🅿️ ${formatDistance(nearest.distM)}`;
-    accessTitle = "Legközelebbi parkoló a túrától";
+    const nearest = cands.reduce((a, b) => (szellOf(b) < szellOf(a) ? b : a));
+    accessText = `🚗 ${formatDistance(szellOf(nearest))}`;
+    accessTitle = "Széll Kálmán tértől a hozzá legközelebbi parkolóig (madártávlat)";
   }
   const accessChip = accessText
     ? ` · <span class="tour-access" title="${escapeHtml(accessTitle)}">${escapeHtml(accessText)}</span>`
