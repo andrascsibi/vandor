@@ -13,12 +13,12 @@ describe("lens vocabulary", () => {
     }
   });
 
-  it("turista is the default; kultúrista is live since T12b, the others pending", () => {
+  it("turista is the default; kultúrista and kóca are live, faj-turista pending", () => {
     expect(DEFAULT_LENS).toBe("turista");
     expect(LENS_META.turista.implemented).toBe(true);
     expect(LENS_META.kulturista.implemented).toBe(true);
     expect(LENS_META.fajturista.implemented).toBe(false);
-    expect(LENS_META.kocaturista.implemented).toBe(false);
+    expect(LENS_META.kocaturista.implemented).toBe(true);
   });
 
   it("names the dob per lens — brand for the default, <Lens> dob otherwise (no 🎲)", () => {

@@ -57,7 +57,7 @@ export const LENS_META: Record<Lens, LensMeta> = {
     note: "Népszerű és már bejárt szakaszok.",
     blurb:
       "Előkelően kiöltözve és szakszerűen fölszerelve ide-oda lötyög s mindig többet mutat, mint amennyire valójában képes.",
-    implemented: false,
+    implemented: true,
   },
 };
 
