@@ -102,7 +102,10 @@ body {
 .compass {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  /* Pin the rose to the hub's right edge: when the info box widens the panel, the
+     ring stays put against the viewport edge instead of re-centering (which used to
+     shift the dice leftward on every expand/tap). */
+  align-items: flex-end;
   gap: 0.45rem;
   pointer-events: none;
 }
