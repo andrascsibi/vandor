@@ -561,11 +561,27 @@ function renderPanel(cands: AccessCandidate[]): void {
   const trailPct = Math.round(
     trailFraction(walk.steps.map((s) => edgesById.get(s.id)).filter((e): e is Edge => !!e)) * 100,
   );
+  // A "how far from town" chip, always visible in the (collapsible) header. With a
+  // chosen start it's the crow-flies from Széll Kálmán tér to that parking (how far
+  // you drive out); with none chosen yet, the distance to the closest parking so you
+  // can gauge access before picking one.
+  let accessChip = "";
+  if (chosenAccess) {
+    const szell = haversine([chosenAccess.lon, chosenAccess.lat], SZELL);
+    accessChip =
+      ` · <span class="tour-access" title="Széll Kálmán tértől a parkolóig (madártávlat)">🚗 ${escapeHtml(formatDistance(szell))}</span>`;
+  } else if (cands.length) {
+    const nearest = cands.reduce((a, b) => (b.distM < a.distM ? b : a));
+    accessChip =
+      ` · <span class="tour-access" title="Legközelebbi parkoló a túrától">🅿️ ${escapeHtml(formatDistance(nearest.distM))}</span>`;
+  }
   infoEl.innerHTML =
     `<button class="tour-head seg-toggle" type="button" aria-expanded="${segListExpanded}">` +
     `<span class="seg-caret">${caret}</span>` +
     `<span><strong>Túra</strong> · ${tour.length} szakasz · <span class="tour-total">${formatDistance(walking)}</span>` +
-    ` · <span class="tour-trail" title="A táv ${trailPct}%-a természetes ösvény">${trailPct}% 🥾</span></span></button>` +
+    ` · <span class="tour-trail" title="A táv ${trailPct}%-a természetes ösvény">${trailPct}% 🥾</span>` +
+    accessChip +
+    `</span></button>` +
     odaVissza +
     warnLine +
     `<ul class="seg-list${segListExpanded ? "" : " collapsed"}">${rows}</ul>` +

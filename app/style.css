@@ -404,6 +404,11 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.info .tour-access {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .info .seg-list {
   list-style: none;
   margin: 0.35rem 0 0;
