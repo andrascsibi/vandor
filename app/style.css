@@ -114,61 +114,97 @@ body {
   position: relative;
   width: 188px;
   height: 188px;
+  /* Inner radius of the four sectors — the hole they leave for the dice. Overridden
+     a touch smaller on mobile where the ring shrinks. */
+  --hole: 46px;
 }
 
-/* The unity circle the four aspects sit on — a quiet dashed ring, purely decorative. */
-.compass-ring::before {
+/* The four lenses are no longer round pips but bent-trapezoid sectors of a donut
+   hugging the dice: each button is a full-ring square clipped to one annular wedge
+   (clip-path for the pie slice + a radial mask punching the central hole for the
+   dice). The wrapper is click-through so the gaps between sectors — and the hole —
+   fall through to the map; only the sectors themselves catch taps. */
+.lenses {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 6px rgba(40, 30, 15, 0.28));
+}
+
+.lens {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  /* Near-solid paper so the rose reads as one control, not a window onto the map. */
+  background: rgba(252, 251, 247, 0.95);
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-mask: radial-gradient(circle at 50% 50%, transparent 0 var(--hole), #000 var(--hole));
+  mask: radial-gradient(circle at 50% 50%, transparent 0 var(--hole), #000 var(--hole));
+  transition: background 0.12s ease;
+}
+
+/* Carve each button down to its quadrant wedge, with a small angular gap along the
+   diagonals (the 5% inset) so the four sectors read as distinct petals. */
+.lens.pos-n { clip-path: polygon(50% 50%, 5% 0, 95% 0); }
+.lens.pos-e { clip-path: polygon(50% 50%, 100% 5%, 100% 95%); }
+.lens.pos-s { clip-path: polygon(50% 50%, 95% 100%, 5% 100%); }
+.lens.pos-w { clip-path: polygon(50% 50%, 0 95%, 0 5%); }
+
+/* The glyph rides out at the sector's mid-radius (~13% in from its rim). Inactive
+   lenses are dimmed + desaturated so the active aspect reads at a glance. */
+.lens-glyph {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1.2rem;
+  line-height: 1;
+  opacity: 0.55;
+  filter: grayscale(0.55);
+  transition: opacity 0.12s ease, filter 0.12s ease;
+}
+.lens.pos-n .lens-glyph { top: 13%; }
+.lens.pos-s .lens-glyph { top: 87%; }
+.lens.pos-e .lens-glyph { left: 87%; }
+.lens.pos-w .lens-glyph { left: 13%; }
+
+.lens:hover .lens-glyph {
+  opacity: 1;
+  filter: none;
+}
+
+/* The active sector lights up trail-orange; its glyph comes to full colour. */
+.lens[aria-pressed="true"] {
+  background: rgba(232, 89, 12, 0.32);
+}
+
+.lens[aria-pressed="true"] .lens-glyph {
+  opacity: 1;
+  filter: none;
+}
+
+/* The dice's knob: a trail-orange triangle on the dice edge pointing at the active
+   lens's sector. --knob-angle (0/90/180/270deg) is set from the lens in reflectLens;
+   the triangle points up by default (north), then swings round. Sits above the dice. */
+.compass-ring::after {
   content: "";
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 142px;
-  height: 142px;
-  transform: translate(-50%, -50%);
-  border: 1.5px dashed rgba(92, 74, 51, 0.45);
-  border-radius: 50%;
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-bottom: 10px solid var(--trail);
+  transform: translate(-50%, -50%) rotate(var(--knob-angle, 0deg)) translateY(-42px);
+  transform-origin: center;
+  filter: drop-shadow(0 0 1.5px var(--paper));
   pointer-events: none;
-}
-
-/* Each lens: a round icon toggle on a cardinal point. Inactive ones are dimmed and
-   desaturated so the active aspect reads at a glance; the pressed one lights up
-   trail-orange and lifts. */
-.lens {
-  position: absolute;
-  width: 46px;
-  height: 46px;
-  display: grid;
-  place-items: center;
-  font-size: 1.2rem;
-  line-height: 1;
-  border: 1px solid rgba(40, 30, 15, 0.15);
-  border-radius: 50%;
-  background: var(--paper);
-  cursor: pointer;
-  opacity: 0.62;
-  filter: grayscale(0.5);
-  box-shadow: 0 2px 7px rgba(40, 30, 15, 0.22);
-  pointer-events: auto;
-  transition: opacity 0.12s ease, filter 0.12s ease, background 0.12s ease,
-    border-color 0.12s ease, transform 0.12s ease;
-}
-
-.lens.pos-n { top: 0; left: 50%; transform: translateX(-50%); }
-.lens.pos-s { bottom: 0; left: 50%; transform: translateX(-50%); }
-.lens.pos-e { right: 0; top: 50%; transform: translateY(-50%); }
-.lens.pos-w { left: 0; top: 50%; transform: translateY(-50%); }
-
-.lens:hover {
-  opacity: 1;
-  filter: none;
-}
-
-.lens[aria-pressed="true"] {
-  opacity: 1;
-  filter: none;
-  background: rgba(232, 89, 12, 0.16);
-  border-color: var(--trail);
-  box-shadow: 0 2px 10px rgba(232, 89, 12, 0.4);
+  z-index: 2;
+  transition: transform 0.18s ease;
 }
 
 /* The dice: the compass hub and the app's primary action — the biggest, boldest
@@ -605,9 +641,9 @@ body {
   }
 
   /* Trim the compass a touch so it doesn't crowd a small screen. */
-  .compass-ring { width: 170px; height: 170px; }
-  .compass-ring::before { width: 128px; height: 128px; }
-  .lens { width: 44px; height: 44px; font-size: 1.15rem; }
+  .compass-ring { width: 170px; height: 170px; --hole: 42px; }
+  .compass-ring::after { transform: translate(-50%, -50%) rotate(var(--knob-angle, 0deg)) translateY(-39px); }
+  .lens-glyph { font-size: 1.12rem; }
   .roll { width: 64px; height: 64px; font-size: 1.7rem; }
 
   .panel-body { gap: 0.6rem; }

@@ -160,6 +160,10 @@ const LENS_POS: Record<Lens, "n" | "e" | "s" | "w"> = {
   kulturista: "w",
 };
 
+// The dice's knob: a little triangle on the dice edge pointing at the active lens's
+// sector. Clockwise degrees from north (up), matching LENS_POS's cardinal points.
+const KNOB_ANGLE: Record<"n" | "e" | "s" | "w", number> = { n: 0, e: 90, s: 180, w: 270 };
+
 function escapeHtml(s: string): string {
   const map: Record<string, string> = {
     "&": "&amp;",
@@ -637,7 +641,12 @@ function renderLensBar(): void {
     btn.type = "button";
     btn.className = `lens pos-${LENS_POS[l]}`;
     btn.dataset.lens = l;
-    btn.textContent = m.icon;
+    // The glyph lives in its own span so it can sit out at the sector's mid-radius
+    // (the button itself is a full-ring square clipped to a bent-trapezoid wedge).
+    const glyph = document.createElement("span");
+    glyph.className = "lens-glyph";
+    glyph.textContent = m.icon;
+    btn.appendChild(glyph);
     btn.title = `${m.label} — ${m.note}`;
     btn.setAttribute("aria-label", m.label);
     btn.setAttribute("aria-pressed", String(l === lens));
@@ -654,6 +663,8 @@ function renderLensBar(): void {
 // still substrate).
 function reflectLens(): void {
   document.body.dataset.lens = lens;
+  // Swing the dice's knob triangle round to point at the active lens's sector.
+  compassEl.style.setProperty("--knob-angle", `${KNOB_ANGLE[LENS_POS[lens]]}deg`);
   for (const btn of lensBtns) btn.setAttribute("aria-pressed", String(btn.dataset.lens === lens));
   const m = LENS_META[lens];
   // Each lens rolls with its own strategy, so the caption (and the dice's accessible
