@@ -3,21 +3,48 @@
 //
 //   npm run graph
 //
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { TrailFeatureCollection } from "../ingest/overpass.ts";
 import { NAMING_KINDS, type PoiFeature, type PoiFeatureCollection } from "../ingest/pois.ts";
-import { buildSegmentGraph, dedupeEdgeKeys } from "./graph.ts";
+import { makeSampler, parseHgt, type HgtTile } from "../ingest/dem.ts";
+import { buildSegmentGraph, dedupeEdgeKeys, type SegmentGraph } from "./graph.ts";
 import { attachPois } from "./attach-pois.ts";
 import { attachAccess, usableParking } from "./attach-access.ts";
+import { attachElevation, elevationCoverage, elevationSummary } from "./attach-elevation.ts";
 import { clipToNetwork, HOSPITALITY_CLIP_M } from "./attach-hospitality.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const IN_PATH = resolve(__dirname, "../raw/trails.geojson");
 const POI_PATH = resolve(__dirname, "../raw/pois.geojson");
+const DEM_DIR = resolve(__dirname, "../raw/dem");
 const OUT_PATH = resolve(__dirname, "../data/segments.json");
 const HOSPITALITY_PATH = resolve(__dirname, "../data/hospitality.json");
+
+/**
+ * Load every `.hgt` tile in raw/dem/ (if any). The file name N47E018 encodes the
+ * SW-corner lat/lon the sampler needs. Returns [] when the dir is absent or empty
+ * — the DEM ingest (`npm run dem`) is optional, exactly like the POI ingest, so a
+ * fresh checkout still builds a graph (without elevation) and `npm run test` is green.
+ */
+async function loadDemTiles(): Promise<HgtTile[]> {
+  let names: string[];
+  try {
+    names = (await readdir(DEM_DIR)).filter((n) => n.endsWith(".hgt"));
+  } catch {
+    return [];
+  }
+  const tiles: HgtTile[] = [];
+  for (const name of names) {
+    const m = /^([NS])(\d{2})([EW])(\d{3})\.hgt$/.exec(name);
+    if (!m) continue;
+    const lat = (m[1] === "S" ? -1 : 1) * Number(m[2]);
+    const lon = (m[3] === "W" ? -1 : 1) * Number(m[4]);
+    tiles.push(parseHgt(new Uint8Array(await readFile(resolve(DEM_DIR, name))), lat, lon));
+  }
+  return tiles;
+}
 
 async function main(): Promise<void> {
   const fc = JSON.parse(await readFile(IN_PATH, "utf8")) as TrailFeatureCollection;
@@ -58,15 +85,32 @@ async function main(): Promise<void> {
     `  ${parking.length} usable parking → ${withAccess}/${graph.vertices.length} vertices got an access point`,
   );
 
-  const lengths = graph.edges.map((e) => e.lengthM).sort((a, b) => a - b);
+  // T12d: bake per-segment elevation (gain/loss/grade) from the DEM, if its tiles
+  // are present (`npm run dem`). Optional — a checkout without them still builds.
+  const tiles = await loadDemTiles();
+  let graphWithEle: SegmentGraph = graph;
+  if (tiles.length) {
+    graphWithEle = attachElevation(graph, makeSampler(tiles));
+    const cov = elevationCoverage(graphWithEle);
+    const sum = elevationSummary(graphWithEle);
+    console.log(
+      `  ${tiles.length} DEM tile(s) → elevation on ${cov.withEle}/${cov.total} segments ` +
+        `(median grade ${sum.medianGrade.toFixed(1)}%, steepest ${sum.maxGrade.toFixed(1)}%` +
+        `${sum.steepest?.name ? ` on "${sum.steepest.name}"` : ""})`,
+    );
+  } else {
+    console.warn(`No ${DEM_DIR} tiles (run \`npm run dem\`); building without elevation.`);
+  }
+
+  const lengths = graphWithEle.edges.map((e) => e.lengthM).sort((a, b) => a - b);
   const total = lengths.reduce((s, l) => s + l, 0);
   const median = lengths.length ? lengths[Math.floor(lengths.length / 2)] : 0;
 
   await mkdir(dirname(OUT_PATH), { recursive: true });
-  await writeFile(OUT_PATH, JSON.stringify(graph) + "\n", "utf8");
+  await writeFile(OUT_PATH, JSON.stringify(graphWithEle) + "\n", "utf8");
 
   console.log(
-    `Wrote ${graph.vertices.length} vertices, ${graph.edges.length} segments → ${OUT_PATH}`,
+    `Wrote ${graphWithEle.vertices.length} vertices, ${graphWithEle.edges.length} segments → ${OUT_PATH}`,
   );
   console.log(
     `  total trail ${(total / 1000).toFixed(1)} km · median segment ${median} m`,

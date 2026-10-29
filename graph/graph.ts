@@ -16,6 +16,7 @@
 // No filesystem, no DOM — build-segments.ts does the IO so this stays testable.
 
 import type { TrailFeatureCollection } from "../ingest/overpass.ts";
+import type { ElevationMetrics } from "../ingest/dem.ts";
 
 export const MERGE_THRESHOLD_M = 50;
 // A trail dead-end sitting within this of another trail vertex is treated as the
@@ -69,6 +70,12 @@ export interface Edge {
   name?: string;
   /** First highway tag encountered along the segment. */
   highway?: string;
+  /**
+   * Per-segment elevation metrics (gain/loss/net + grade), sampled from the DEM
+   * at build time (T12d, the 🩸 faj-turista lens). Absent when the graph was
+   * built without DEM tiles present — the lens then falls back to novelty.
+   */
+  elevation?: ElevationMetrics;
   /**
    * Stable, build-order-independent content key (see `edgeStableKey`). Unlike
    * `id` — a compact index reassigned on every rebuild — this survives re-ingest
