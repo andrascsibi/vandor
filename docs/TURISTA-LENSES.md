@@ -28,7 +28,7 @@ re-ranking lencse (meredekség), plusz a mai default.
 |---|---|---|---|
 | **turista** (default) | 🧭 | — | A mai app. Az út a cél, novelty-roll (`pickNovelSegment`). |
 | **kultúrista** | 🍷 | POI-overlay | Vendéglátás a szakasz / access körül — amire egy rendes turista a hátizsákjában költ. |
-| **faj-turista** | 🩸 | re-ranking + aura | Minden szakasz **meredekség-aurája** (delta_h, a jelzésszín helyett egy szekvenciális ramp — lapos = halvány, meredek = vérvörös 🩸), a top-5 korona-badge („👑 #3 · 24%"), és egy stat-kártya (leggorombább szakasz, lejtés-hisztogram = egyben a ramp jelmagyarázata). |
+| **faj-turista** | 🩸 | re-ranking + aura | Minden szakasz **meredekség-aurája** (delta_h, a jelzésszín helyett egy szekvenciális ramp — lapos = halvány, meredek = vérvörös 🩸), és a top-5 korona-badge („👑 #3 · 24%"). A lejtés-stat + hisztogram egyelőre egy **dev-panelben** (`#dev=1`, balra lent), nem a fő UI-ban — a petálok minimálisak maradnak. |
 | **kóca-turista** | 🐷 | POI-overlay (gag) | Felszerelés-boltok (`shop=outdoor/sports`). Vicc, de olcsó vicc. |
 
 ## Az iránytű — a négy aspektus egysége (UI, T12b)
