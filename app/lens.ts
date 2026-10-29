@@ -46,7 +46,7 @@ export const LENS_META: Record<Lens, LensMeta> = {
   fajturista: {
     icon: "🩸",
     label: "fajturista",
-    note: "A legmeredekebb szakaszok rangsora.",
+    note: "A legmeredekebb szakaszok.",
     blurb:
       "Olyan, mint a tisztafajú tenyészállat. Ő csak a teljesítményt élvezi.",
     implemented: true,

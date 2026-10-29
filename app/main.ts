@@ -117,7 +117,10 @@ const rollLabelEl = document.getElementById("roll-label") as HTMLSpanElement;
 const compassEl = document.getElementById("compass") as HTMLDivElement;
 const compassToggle = document.getElementById("compass-toggle") as HTMLButtonElement;
 const compassModeEl = document.getElementById("compass-mode") as HTMLDivElement;
-const fajStatsEl = document.getElementById("faj-stats") as HTMLDivElement;
+const devPanelEl = document.getElementById("dev-panel") as HTMLDivElement;
+// Dev-only UI (the 🩸 stats panel for now) is gated on a `dev=1` URL-hash flag, read
+// once at load. It rides along in the hash so it survives our own replaceState writes.
+let devMode = false;
 const compassIntroEl = document.getElementById("compass-intro") as HTMLParagraphElement;
 const panelEl = document.getElementById("panel") as HTMLElement;
 const panelHandle = document.getElementById("panel-handle") as HTMLButtonElement;
@@ -874,7 +877,9 @@ function updateLinks(): void {
 // survives a graph re-ingest (see tour.ts); the lens rides along too (lens.ts), the
 // default encoding to "" so plain links stay clean.
 function syncHash(): void {
-  const body = [encodeTourHash(tourKeys(), chosenAccess), encodeLens(lens)].filter(Boolean).join("&");
+  const body = [encodeTourHash(tourKeys(), chosenAccess), encodeLens(lens), devMode ? "dev=1" : ""]
+    .filter(Boolean)
+    .join("&");
   history.replaceState(null, "", body ? `#${body}` : location.pathname + location.search);
 }
 
@@ -923,36 +928,37 @@ function reflectLens(): void {
     `<p class="ci-mode-head">${m.icon} ${escapeHtml(capitalize(m.label))}</p>` +
     `<p class="ci-mode-quote">„${escapeHtml(m.blurb)}"</p>` +
     `<p class="ci-mode-app">${escapeHtml(appLine)}</p>`;
-  renderFajStats();
+  renderDevPanel();
 }
 
-// The 🩸 faj-turista stats card: the network's whole delta_h distribution at a
-// glance — a headline on the steepest segment, four stat tiles, a grade histogram
-// (bars tinted by the same ramp as the map, so the chart is also the legend) and a
-// ramp legend bar. Shown only under the faj-turista lens; empty if no segment
-// carries elevation (a graph built without the DEM).
-function renderFajStats(): void {
-  if (lens !== "fajturista" || !graphRef) {
-    fajStatsEl.hidden = true;
-    fajStatsEl.innerHTML = "";
+// The dev panel (bottom-left, #dev=1 only): the 🩸 faj-turista's whole delta_h
+// distribution — a headline on the steepest segment, four stat tiles, a grade
+// histogram (bars tinted by the map's ramp) and a ramp legend. Parked here while it
+// proves out so the compass petals stay minimal. Empty unless the dev flag is set
+// and the faj-turista lens is active with DEM-backed segments.
+function renderDevPanel(): void {
+  if (!devMode || lens !== "fajturista" || !graphRef) {
+    devPanelEl.hidden = true;
+    devPanelEl.innerHTML = "";
     return;
   }
   const g = graded(graphRef.edges);
   const s = gradeStats(g);
   if (s.count === 0) {
-    fajStatsEl.hidden = true;
+    devPanelEl.hidden = true;
     return;
   }
-  fajStatsEl.hidden = false;
+  devPanelEl.hidden = false;
 
   // The headline names the steepest *rankable* climb (≥ MIN_RANK_LENGTH_M), not the
   // distribution max — a short stair could win on mean grade but isn't a real peak.
   const podium = topSteep(g);
   const steepest = podium[0]?.edge ?? s.steepest;
   const steepestName = steepest?.name ?? "névtelen fal";
+  const devHead = `<div class="dev-panel-head">🩸 faj-turista · delta_h <span class="dev-tag">dev</span></div>`;
   const head =
     `<button type="button" class="faj-steepest" data-id="${steepest?.id ?? ""}" ` +
-    `title="Mutasd a térképen">🩸 Legmeredekebb: <strong>${escapeHtml(steepestName)}</strong> ` +
+    `title="Mutasd a térképen">Legmeredekebb: <strong>${escapeHtml(steepestName)}</strong> ` +
     `· ${Math.round(steepest?.elevation.grade ?? s.maxGrade)}%</button>`;
 
   const tile = (n: string, label: string) =>
@@ -984,7 +990,7 @@ function renderFajStats(): void {
     `<div class="faj-legend"><div class="faj-legend-bar" style="background:${rampGradientCss()}"></div>` +
     `<div class="faj-legend-labels"><span>0%</span><span>${GRADE_MAX_PCT}%+</span></div></div>`;
 
-  fajStatsEl.innerHTML = head + tiles + hist + legend;
+  devPanelEl.innerHTML = devHead + head + tiles + hist + legend;
 }
 
 // Switch lenses: update the UI, then rebuild so any lens-dependent layers refresh
@@ -1104,7 +1110,7 @@ panelEl.addEventListener("click", (ev) => {
 });
 
 // Tap the 🩸 stats headline → frame the steepest segment on the map and spotlight it.
-fajStatsEl.addEventListener("click", (ev) => {
+devPanelEl.addEventListener("click", (ev) => {
   const btn = (ev.target as HTMLElement).closest(".faj-steepest") as HTMLElement | null;
   if (!btn) return;
   const id = Number(btn.dataset.id);
@@ -1151,6 +1157,7 @@ async function init(): Promise<void> {
 
   // Build the compass and adopt any lens from the opening hash (shared link).
   lens = parseLens(location.hash);
+  devMode = new URLSearchParams(location.hash.replace(/^#/, "")).get("dev") === "1";
   compassIntroEl.textContent = TURISTA_INTRO;
   applyCompassExpanded();
   applyPanelExpanded();
@@ -1232,6 +1239,7 @@ async function init(): Promise<void> {
   // A pasted/edited link navigates the túra; our own writes use replaceState.
   window.addEventListener("hashchange", () => {
     lens = parseLens(location.hash); // adopt a pasted link's lens too
+    devMode = new URLSearchParams(location.hash.replace(/^#/, "")).get("dev") === "1";
     reflectLens();
     loadFromHash();
   });

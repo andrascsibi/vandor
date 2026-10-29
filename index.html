@@ -36,10 +36,6 @@
         <div id="compass-info" class="compass-info">
           <p id="compass-intro" class="ci-intro"></p>
           <div id="compass-mode" class="ci-mode"></div>
-          <!-- 🩸 faj-turista only: the network's delta_h distribution — steepest
-               segment, stat tiles, a grade histogram (also the ramp legend) and the
-               colour-ramp legend. Populated + shown/hidden by renderFajStats. -->
-          <div id="faj-stats" class="faj-stats" hidden></div>
         </div>
       </div>
 
@@ -78,6 +74,11 @@
         <p class="tip">Kattints a szakaszokra: hozzáadás / elvétel. A Mapy link a teljes túrát nyitja meg.</p>
       </div>
     </aside>
+
+    <!-- Dev-only panel (enabled with #dev=1 in the URL), bottom-left. Currently holds
+         the 🩸 faj-turista delta_h stats + grade histogram while they prove out, so
+         the compass petals stay minimal. Populated + shown/hidden by renderDevPanel. -->
+    <div id="dev-panel" class="dev-panel" hidden></div>
 
     <script type="module" src="/app/main.ts"></script>
   </body>
