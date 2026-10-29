@@ -17,7 +17,7 @@ describe("lens vocabulary", () => {
     expect(DEFAULT_LENS).toBe("turista");
     expect(LENS_META.turista.implemented).toBe(true);
     expect(LENS_META.kulturista.implemented).toBe(true);
-    expect(LENS_META.fajturista.implemented).toBe(false);
+    expect(LENS_META.fajturista.implemented).toBe(true);
     expect(LENS_META.kocaturista.implemented).toBe(true);
   });
 

@@ -325,6 +325,118 @@ body {
   color: #8a8172;
 }
 
+/* 🩸 faj-turista stats card (T12d) — the delta_h distribution under the Benedek
+   blurb. Only rendered when the lens is active; a hairline rule separates it. */
+.faj-stats {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(140, 0, 19, 0.18);
+}
+
+.faj-steepest {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin: 0 0 0.55rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.82rem;
+  line-height: 1.3;
+  color: var(--ink);
+  cursor: pointer;
+}
+.faj-steepest strong {
+  color: #8c0013;
+}
+.faj-steepest:hover {
+  text-decoration: underline;
+}
+
+.faj-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.3rem;
+  margin-bottom: 0.6rem;
+}
+.faj-tile {
+  display: flex;
+  flex-direction: column;
+  padding: 0.35rem 0.45rem;
+  background: rgba(140, 0, 19, 0.05);
+  border-radius: 8px;
+}
+.faj-tile-n {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--earth);
+  font-variant-numeric: tabular-nums;
+}
+.faj-tile-l {
+  font-size: 0.68rem;
+  color: #8a8172;
+  margin-top: 0.05rem;
+}
+
+/* The histogram: tinted bars share the map's ramp, so the chart is its own legend. */
+.faj-hist-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px; /* the 2px surface gap between fills */
+  height: 52px;
+}
+.faj-bar {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 2px 2px 0 0;
+  transition: opacity 0.1s;
+}
+.faj-bar:hover {
+  outline: 2px solid var(--paper);
+}
+.faj-hist-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.2rem;
+  font-size: 0.66rem;
+  color: #8a8172;
+}
+
+.faj-legend {
+  margin-top: 0.55rem;
+}
+.faj-legend-bar {
+  height: 8px;
+  border-radius: 4px;
+}
+.faj-legend-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.15rem;
+  font-size: 0.66rem;
+  color: #8a8172;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The top-5 steepest crown badges pinned on the map. */
+.faj-crown {
+  pointer-events: auto;
+}
+.faj-crown span {
+  display: inline-block;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 0 0 2px var(--paper), 0 2px 8px rgba(40, 30, 15, 0.4);
+  cursor: pointer;
+}
+
 .info {
   display: flex;
   flex-direction: column;

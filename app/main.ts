@@ -27,6 +27,17 @@ import {
   segmentsInBounds,
   type GeoBounds,
 } from "./trip.ts";
+import {
+  graded,
+  gradeColor,
+  gradeStats,
+  gradeHistogram,
+  topSteep,
+  crownBadge,
+  steepPool,
+  rampGradientCss,
+  GRADE_MAX_PCT,
+} from "./fajturista.ts";
 import { markWalked, isWalked, distinctWalkedCount, type Profile } from "./profile.ts";
 import { localProfileStore } from "./profile-store.ts";
 import {
@@ -89,6 +100,7 @@ const rollLabelEl = document.getElementById("roll-label") as HTMLSpanElement;
 const compassEl = document.getElementById("compass") as HTMLDivElement;
 const compassToggle = document.getElementById("compass-toggle") as HTMLButtonElement;
 const compassModeEl = document.getElementById("compass-mode") as HTMLDivElement;
+const fajStatsEl = document.getElementById("faj-stats") as HTMLDivElement;
 const compassIntroEl = document.getElementById("compass-intro") as HTMLParagraphElement;
 const panelEl = document.getElementById("panel") as HTMLElement;
 const panelHandle = document.getElementById("panel-handle") as HTMLButtonElement;
@@ -208,12 +220,28 @@ const HIGHLIGHT_DASH: Record<SurfaceClass, string | undefined> = {
   road: "1 14",
 };
 
+// The 🩸 faj-turista aura (T12d): a segment's steepness painted as a translucent
+// screen-space glow. A true per-pixel distance field (opacity 1 within 8 px of the
+// line, fading to 0 by 16 px) is approximated by a stack of concentric strokes —
+// widest + faintest at the ±16 px rim, built up to a crisp core. Source-over means
+// the centre accumulates to near-opaque while the rim keeps the faint outer alpha,
+// so the profile reads exactly as asked (plateau in the middle, fade at the edge).
+// Widths are in pixels, so the aura is 8/16 px on screen at any zoom. The core line
+// (last entry) is the clickable one; the rim strokes are inert.
+const AURA_STACK: readonly { weight: number; opacity: number }[] = [
+  { weight: 16, opacity: 0.1 }, // ±8 px rim → fades out by ±16 px of line width
+  { weight: 11, opacity: 0.16 },
+  { weight: 8, opacity: 0.22 }, // the ~8 px "full" plateau begins here
+  { weight: 3.5, opacity: 0.95 }, // crisp core (also the hit target)
+];
+
 // A túra (T7) is an ordered list of edge ids the user assembles by clicking.
 let network: L.LayerGroup | null = null; // base (non-túra) segments, canvas pane
 let tourLayer: L.LayerGroup | null = null; // the túra's highlighted segments + dots
 let emphasisLayer: L.LayerGroup | null = null; // the one segment hovered/tapped in the panel
 let accessLayer: L.LayerGroup | null = null; // candidate / chosen parking markers
 let hospitalityLayer: L.LayerGroup | null = null; // 🍷 kultúrista pins near the túra
+let fajCrownLayer: L.LayerGroup | null = null; // 🩸 faj-turista top-5 steepest crown badges
 // Segment list starts collapsed on small screens so the panel doesn't eat the map.
 let segListExpanded = !window.matchMedia("(max-width: 640px)").matches;
 let tour: number[] = [];
@@ -268,34 +296,140 @@ function drawNetwork(): void {
   const bounds: GeoBounds = { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() };
   const inTour = new Set(tour);
   const visible = segmentsInBounds(graphRef.edges, bounds).filter((e) => !inTour.has(e.id));
-  const lines = visible.map((edge) => {
-    const st = SURFACE_STYLE[surfaceClass(edge.highway)];
-    // A segment you've already walked is faded — a "learned flashcard". The map
-    // fills with faint lines as you cover the hills, and the untrodden stays bold.
-    const walked = isWalked(profile, edge.key);
-    const weight = walked ? st.weight * 0.7 : st.weight;
-    const opacity = walked ? st.opacity * WALKED_FADE : st.opacity;
-    const pl = L.polyline(latLngsOf(edge), {
-      renderer: netRenderer,
-      pane: "network",
-      color: trailColour(edge.colours),
-      weight,
-      opacity,
-      dashArray: st.dashArray,
-    });
-    pl.on("click", () => toggleInTour(edge.id));
-    pl.on("mouseover", () => {
-      pl.setStyle({ weight: 6, opacity: 1, dashArray: undefined });
-      map.getContainer().style.cursor = "pointer";
-    });
-    pl.on("mouseout", () => {
-      pl.setStyle({ weight, opacity, dashArray: st.dashArray });
-      map.getContainer().style.cursor = "";
-    });
-    return pl;
-  });
+  const lines = visible.flatMap((edge) =>
+    lens === "fajturista" ? fajNetworkLines(edge) : surfaceNetworkLines(edge),
+  );
   network?.remove();
   network = L.layerGroup(lines).addTo(map);
+}
+
+/** The default (non-faj) rendering of one base segment: a waymark-coloured line. */
+function surfaceNetworkLines(edge: Edge): L.Layer[] {
+  const st = SURFACE_STYLE[surfaceClass(edge.highway)];
+  // A segment you've already walked is faded — a "learned flashcard". The map
+  // fills with faint lines as you cover the hills, and the untrodden stays bold.
+  const walked = isWalked(profile, edge.key);
+  const weight = walked ? st.weight * 0.7 : st.weight;
+  const opacity = walked ? st.opacity * WALKED_FADE : st.opacity;
+  const pl = L.polyline(latLngsOf(edge), {
+    renderer: netRenderer,
+    pane: "network",
+    color: trailColour(edge.colours),
+    weight,
+    opacity,
+    dashArray: st.dashArray,
+  });
+  pl.on("click", () => toggleInTour(edge.id));
+  pl.on("mouseover", () => {
+    pl.setStyle({ weight: 6, opacity: 1, dashArray: undefined });
+    map.getContainer().style.cursor = "pointer";
+  });
+  pl.on("mouseout", () => {
+    pl.setStyle({ weight, opacity, dashArray: st.dashArray });
+    map.getContainer().style.cursor = "";
+  });
+  return [pl];
+}
+
+/**
+ * The 🩸 faj-turista rendering of one base segment: the steepness aura (sign colour
+ * is irrelevant to the predator — delta_h replaces it). A stack of translucent rim
+ * strokes building to a crisp clickable core, all tinted by the segment's grade so
+ * steep ones blaze red and flat ones recede. A segment the DEM couldn't reach has
+ * no grade — drawn as a faint neutral line so it's still clickable, never coloured.
+ */
+function fajNetworkLines(edge: Edge): L.Layer[] {
+  const latlngs = latLngsOf(edge);
+  const walked = isWalked(profile, edge.key);
+  // Walked history still dims the glow (the flashcard feel survives the lens), but
+  // the hue stays true to the land's steepness.
+  const dim = walked ? WALKED_FADE : 1;
+  if (!edge.elevation) {
+    const pl = L.polyline(latlngs, {
+      renderer: netRenderer,
+      pane: "network",
+      color: "#9aa0a6",
+      weight: 3,
+      opacity: 0.4 * dim,
+    });
+    pl.on("click", () => toggleInTour(edge.id));
+    return [pl];
+  }
+  const color = gradeColor(edge.elevation.grade);
+  const layers: L.Layer[] = [];
+  // Rim strokes: inert, widest→narrowest, building the glow.
+  for (let i = 0; i < AURA_STACK.length - 1; i++) {
+    const s = AURA_STACK[i];
+    layers.push(
+      L.polyline(latlngs, {
+        renderer: netRenderer,
+        pane: "network",
+        color,
+        weight: s.weight,
+        opacity: s.opacity * dim,
+        lineCap: "round",
+        lineJoin: "round",
+        interactive: false,
+      }),
+    );
+  }
+  // Core: the crisp centre + the hit target for add-to-túra.
+  const core = AURA_STACK[AURA_STACK.length - 1];
+  const pl = L.polyline(latlngs, {
+    renderer: netRenderer,
+    pane: "network",
+    color,
+    weight: core.weight,
+    opacity: core.opacity * dim,
+    lineCap: "round",
+  });
+  pl.on("click", () => toggleInTour(edge.id));
+  pl.on("mouseover", () => {
+    pl.setStyle({ weight: 6, opacity: 1 });
+    map.getContainer().style.cursor = "pointer";
+  });
+  pl.on("mouseout", () => {
+    pl.setStyle({ weight: core.weight, opacity: core.opacity * dim });
+    map.getContainer().style.cursor = "";
+  });
+  layers.push(pl);
+  return layers;
+}
+
+/** Midpoint [lon,lat] of a segment's polyline (the vertex nearest the middle). */
+function edgeMidpoint(edge: Edge): [number, number] {
+  return edge.coordinates[Math.floor(edge.coordinates.length / 2)];
+}
+
+/**
+ * The 🩸 top-5 steepest segments wear a crown badge ("👑 #1 · 27%") at their
+ * midpoint — Benedek's podium, so the faj-turista can eyeball the hardest climbs
+ * without reading every aura. Only under the faj-turista lens; tapping one frames
+ * that segment. Drawn from the whole network (the podium is global, not per-view).
+ */
+function drawFajCrowns(): void {
+  fajCrownLayer?.remove();
+  fajCrownLayer = null;
+  if (lens !== "fajturista" || !graphRef) return;
+  const podium = topSteep(graded(graphRef.edges));
+  const markers = podium.map(({ edge, rank }) => {
+    const [lon, lat] = edgeMidpoint(edge);
+    const m = L.marker(toLatLng([lon, lat]), {
+      icon: L.divIcon({
+        className: "faj-crown",
+        html: `<span style="background:${gradeColor(edge.elevation.grade)}">${escapeHtml(
+          crownBadge(rank, edge.elevation.grade),
+        )}</span>`,
+        iconSize: undefined as unknown as L.PointTuple,
+      }),
+      title: edge.name ?? `#${rank} legmeredekebb szakasz`,
+    });
+    m.on("click", () => {
+      map.fitBounds(L.latLngBounds(latLngsOf(edge)), { padding: [80, 80], maxZoom: 16 });
+    });
+    return m;
+  });
+  fajCrownLayer = L.layerGroup(markers).addTo(map);
 }
 
 // The túra: each member segment highlighted (white casing + colour), click to
@@ -706,6 +840,64 @@ function reflectLens(): void {
     `<p class="ci-mode-head">${m.icon} ${escapeHtml(capitalize(m.label))}</p>` +
     `<p class="ci-mode-quote">„${escapeHtml(m.blurb)}"</p>` +
     `<p class="ci-mode-app">${escapeHtml(appLine)}</p>`;
+  renderFajStats();
+}
+
+// The 🩸 faj-turista stats card: the network's whole delta_h distribution at a
+// glance — a headline on the steepest segment, four stat tiles, a grade histogram
+// (bars tinted by the same ramp as the map, so the chart is also the legend) and a
+// ramp legend bar. Shown only under the faj-turista lens; empty if no segment
+// carries elevation (a graph built without the DEM).
+function renderFajStats(): void {
+  if (lens !== "fajturista" || !graphRef) {
+    fajStatsEl.hidden = true;
+    fajStatsEl.innerHTML = "";
+    return;
+  }
+  const g = graded(graphRef.edges);
+  const s = gradeStats(g);
+  if (s.count === 0) {
+    fajStatsEl.hidden = true;
+    return;
+  }
+  fajStatsEl.hidden = false;
+
+  const steepestName = s.steepest?.name ?? "névtelen fal";
+  const head =
+    `<button type="button" class="faj-steepest" data-id="${s.steepest?.id ?? ""}" ` +
+    `title="Mutasd a térképen">🩸 Legmeredekebb: <strong>${escapeHtml(steepestName)}</strong> ` +
+    `· ${Math.round(s.maxGrade)}%</button>`;
+
+  const tile = (n: string, label: string) =>
+    `<div class="faj-tile"><span class="faj-tile-n">${n}</span><span class="faj-tile-l">${label}</span></div>`;
+  const tiles =
+    `<div class="faj-tiles">` +
+    tile(`${s.medianGrade.toFixed(1)}%`, "medián lejtés") +
+    tile(`${Math.round(s.maxPitch)}%`, "legnagyobb lejtő") +
+    tile(`${s.p90Grade.toFixed(1)}%`, "p90 lejtés") +
+    tile(`${(s.totalGainM / 1000).toFixed(1)} km`, "összes emelkedő") +
+    `</div>`;
+
+  const bins = gradeHistogram(g);
+  const maxCount = Math.max(...bins.map((b) => b.count), 1);
+  const bars = bins
+    .map(
+      (b) =>
+        `<div class="faj-bar" style="height:${Math.max(3, (b.count / maxCount) * 100)}%;background:${b.color}" ` +
+        `title="${b.lo}–${b.hi}% lejtés · ${b.count} szakasz"></div>`,
+    )
+    .join("");
+  const hist =
+    `<div class="faj-hist" role="img" aria-label="Lejtés-eloszlás: ${s.count} szakasz">` +
+    `<div class="faj-hist-bars">${bars}</div>` +
+    `<div class="faj-hist-axis"><span>lapos</span><span>delta_h →</span><span>${bins[bins.length - 1].hi}%</span></div>` +
+    `</div>`;
+
+  const legend =
+    `<div class="faj-legend"><div class="faj-legend-bar" style="background:${rampGradientCss()}"></div>` +
+    `<div class="faj-legend-labels"><span>0%</span><span>${GRADE_MAX_PCT}%+</span></div></div>`;
+
+  fajStatsEl.innerHTML = head + tiles + hist + legend;
 }
 
 // Switch lenses: update the UI, then rebuild so any lens-dependent layers refresh
@@ -751,6 +943,7 @@ function rebuild(): void {
   drawNetwork();
   drawAccess(cands);
   drawHospitality();
+  drawFajCrowns();
   renderPanel(cands);
   updateLinks();
   syncHash();
@@ -822,6 +1015,18 @@ panelEl.addEventListener("click", (ev) => {
   }
 });
 
+// Tap the 🩸 stats headline → frame the steepest segment on the map and spotlight it.
+fajStatsEl.addEventListener("click", (ev) => {
+  const btn = (ev.target as HTMLElement).closest(".faj-steepest") as HTMLElement | null;
+  if (!btn) return;
+  const id = Number(btn.dataset.id);
+  const edge = edgesById.get(id);
+  if (edge) {
+    emphasize(id);
+    map.fitBounds(L.latLngBounds(latLngsOf(edge)), { padding: [80, 80], maxZoom: 16 });
+  }
+});
+
 // Hover a segment row → spotlight it on the map; clear when the pointer leaves it.
 infoEl.addEventListener("mouseover", (ev) => {
   const row = (ev.target as HTMLElement).closest(".seg-row") as HTMLElement | null;
@@ -882,7 +1087,8 @@ async function init(): Promise<void> {
   // Per-lens seed strategy:
   //  🧭 turista   — the north star: favour the untrodden (novelty-weighted).
   //  🍷 kultúrista — any segment near food/drink, uniformly (visited or new alike).
-  //  🩸 faj-turista — the steepest; pending the T12c SRTM DEM → novelty for now.
+  //  🩸 faj-turista — the steepest: roll the steep quantile, novelty-weighted among
+  //                   them so it's a hard climb yet still leans to the untrodden.
   //  🐷 kóca       — the anti-Vándor: the famous spots + paths already walked, uniformly.
   const rollSeed = (): Edge => {
     switch (lens) {
@@ -892,7 +1098,10 @@ async function init(): Promise<void> {
         const pool = kocaPool(kocaPopular, graph.edges, profile);
         return pool.length ? pickRandomSegment(pool) : novelty();
       }
-      case "fajturista":
+      case "fajturista": {
+        const pool = steepPool(trailSeeds.length ? trailSeeds : graph.edges);
+        return pool.length ? pickNovelSegment(pool, profile) : novelty();
+      }
       case "turista":
       default:
         return novelty();

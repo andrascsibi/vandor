@@ -49,7 +49,7 @@ export const LENS_META: Record<Lens, LensMeta> = {
     note: "A legmeredekebb szakaszok rangsora.",
     blurb:
       "Olyan, mint a tisztafajú tenyészállat. Ő csak a teljesítményt élvezi.",
-    implemented: false,
+    implemented: true,
   },
   kocaturista: {
     icon: "🐷",
