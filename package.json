@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "ingest": "node ingest/fetch-trails.ts",
     "pois": "node ingest/fetch-pois.ts",
+    "dem": "node ingest/fetch-dem.ts",
     "graph": "node graph/build-segments.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
