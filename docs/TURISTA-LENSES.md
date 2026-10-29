@@ -95,7 +95,13 @@ szolgál — ez teszi ezt a legjobb első sávvá.
   etoszhoz (a nyers tile gitignore-olt, csak a derivált metrika kerül be). Lokális
   bilineáris mintavétel a polyline mentén ~30 m-enként → per-szakasz
   `gainM/lossM/netM` + átlag- és csúcs-lejtés (`grade`/`maxGrade`, ~90 m ablak),
-  `edge.elevation`-be sütve (`ingest/dem.ts` + `graph/attach-elevation.ts`). Ez az
+  `edge.elevation`-be sütve (`ingest/dem.ts` + `graph/attach-elevation.ts`). **Plusz
+  per-koordináta magasság (`edge.eles`, 1:1 a `coordinates`-szel) a *per-subsegment
+  aura*-hoz** — a polyline-csúcsok már ~16 m-re vannak (finomabb, mint az SRTM 30 m-e),
+  így nem kell új geometria; a kliens `smoothGrades` (~90 m ablak) ad lokális lejtést
+  vertexenként, és egy **dedikált canvas-réteg** (nem Leaflet-polyline) festi a span-onkénti
+  színt futam-csoportosítással — a több tízezer span így néhány ms canvas-stroke, nem jank.
+  A payload 494→549 KB gzip (+11%). Ez az
   ingest a rég halogatott szintprofilt (T7 later), a nehézségi jelzést és később
   az awesomeness-score bemenetét is megnyitja — high-leverage.
 - **Boltok (🐷):** `shop=outdoor/sports`, a kultúrista-overlay újrahasznosítása.
