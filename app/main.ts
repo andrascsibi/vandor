@@ -99,8 +99,14 @@ const netRenderer = L.canvas({ pane: "network", padding: 0.5, tolerance: 14 });
 map.createPane("aura");
 const auraPane = map.getPane("aura")!;
 auraPane.style.zIndex = "340";
-const auraCanvas = L.DomUtil.create("canvas", "faj-aura-canvas", auraPane);
+// `leaflet-zoom-animated` opts the canvas into Leaflet's zoom-animation CSS transition,
+// so our imperative transform (below) glides with the tiles instead of snapping.
+const auraCanvas = L.DomUtil.create("canvas", "faj-aura-canvas leaflet-zoom-animated", auraPane);
 const auraCtx = auraCanvas.getContext("2d")!;
+// The map state the canvas content was last drawn for — the reference the zoom-anim
+// transform scales *from* (a full redraw happens at the end, on moveend).
+let auraDrawCenter = map.getCenter();
+let auraDrawZoom = map.getZoom();
 
 const rollBtn = document.getElementById("roll") as HTMLButtonElement;
 const infoEl = document.getElementById("info") as HTMLDivElement;
@@ -412,6 +418,22 @@ function drawAuraEdge(pts: L.Point[], grades: number[], dim: number): void {
 }
 
 /**
+ * Position (and, mid-zoom, scale) the aura canvas for a given target center/zoom,
+ * relative to the center/zoom its content was drawn at — the same math Leaflet's own
+ * canvas renderer uses, so on `zoomanim` the overlay glides with the tiles instead of
+ * lingering at the old size until the next full redraw. At the draw zoom the scale is
+ * 1 and this just pins the canvas to the viewport's top-left.
+ */
+function updateAuraTransform(center: L.LatLng, zoom: number): void {
+  const scale = map.getZoomScale(zoom, auraDrawZoom);
+  const viewHalf = map.getSize().multiplyBy(0.5);
+  const currentCenterPoint = map.project(auraDrawCenter, zoom);
+  const origin = (map as unknown as { _getNewPixelOrigin(c: L.LatLng, z: number): L.Point })._getNewPixelOrigin(center, zoom);
+  const topLeftOffset = viewHalf.multiplyBy(-scale).add(currentCenterPoint).subtract(origin);
+  L.DomUtil.setTransform(auraCanvas, topLeftOffset, scale);
+}
+
+/**
  * Redraw the whole steepness-aura canvas. Sizes + repositions the canvas to the
  * current viewport (retina-aware), clears it, and — under the 🩸 lens — strokes the
  * per-subsegment aura for every graded segment in view. Cheap enough to run on every
@@ -420,7 +442,9 @@ function drawAuraEdge(pts: L.Point[], grades: number[], dim: number): void {
 function drawAura(): void {
   const size = map.getSize();
   const dpr = window.devicePixelRatio || 1;
-  L.DomUtil.setPosition(auraCanvas, map.containerPointToLayerPoint([0, 0]));
+  auraDrawCenter = map.getCenter();
+  auraDrawZoom = map.getZoom();
+  updateAuraTransform(auraDrawCenter, auraDrawZoom); // scale 1 → pin to the viewport
   auraCanvas.width = size.x * dpr;
   auraCanvas.height = size.y * dpr;
   auraCanvas.style.width = `${size.x}px`;
@@ -1202,6 +1226,9 @@ async function init(): Promise<void> {
   rollBtn.addEventListener("click", roll);
   map.on("moveend", drawNetwork); // keep the base network in sync on pan/zoom
   map.on("moveend viewreset resize", drawAura); // repaint the 🩸 aura canvas to match
+  // Track the zoom animation so the aura scales with the tiles, then redraws crisp on
+  // moveend — otherwise the old-size overlay lingers ~250 ms behind the shrinking map.
+  map.on("zoomanim", (e) => updateAuraTransform(e.center, e.zoom));
   // A pasted/edited link navigates the túra; our own writes use replaceState.
   window.addEventListener("hashchange", () => {
     lens = parseLens(location.hash); // adopt a pasted link's lens too
