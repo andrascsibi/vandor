@@ -442,18 +442,40 @@ function drawTour(): void {
     const edge = edgesById.get(id);
     if (!edge) continue;
     const latlngs = latLngsOf(edge);
-    layers.push(L.polyline(latlngs, { color: "#fff", weight: 11, opacity: 0.95, interactive: false }));
-    // Dash/dot the highlight by surface too (over the solid white casing, so gaps
-    // read as white) — the turista sees at a glance how much of the túra is paved.
-    layers.push(
-      L.polyline(latlngs, {
-        color: trailColour(edge.colours),
-        weight: 6,
-        opacity: 1,
-        dashArray: HIGHLIGHT_DASH[surfaceClass(edge.highway)],
-        interactive: false,
-      }),
-    );
+    if (lens === "fajturista" && edge.elevation) {
+      // Under the 🩸 lens the aura owns the selected segment too: the steepness glow
+      // underneath, a white casing to mark it as chosen, and a grade-coloured core —
+      // so a túra segment reads by its delta_h, never its waymark colour.
+      const color = gradeColor(edge.elevation.grade);
+      for (let i = 0; i < AURA_STACK.length - 1; i++) {
+        const sstk = AURA_STACK[i];
+        layers.push(
+          L.polyline(latlngs, {
+            color,
+            weight: sstk.weight,
+            opacity: sstk.opacity,
+            lineCap: "round",
+            lineJoin: "round",
+            interactive: false,
+          }),
+        );
+      }
+      layers.push(L.polyline(latlngs, { color: "#fff", weight: 9, opacity: 0.95, interactive: false }));
+      layers.push(L.polyline(latlngs, { color, weight: 5, opacity: 1, lineCap: "round", interactive: false }));
+    } else {
+      layers.push(L.polyline(latlngs, { color: "#fff", weight: 11, opacity: 0.95, interactive: false }));
+      // Dash/dot the highlight by surface too (over the solid white casing, so gaps
+      // read as white) — the turista sees at a glance how much of the túra is paved.
+      layers.push(
+        L.polyline(latlngs, {
+          color: trailColour(edge.colours),
+          weight: 6,
+          opacity: 1,
+          dashArray: HIGHLIGHT_DASH[surfaceClass(edge.highway)],
+          interactive: false,
+        }),
+      );
+    }
     // A fat, invisible hit-line over the casing so a selected segment is easy to
     // tap off (the visible 6px line is a tiny target, esp. on mobile). The click
     // removes the segment; this is the only interactive layer of the three.
@@ -862,11 +884,15 @@ function renderFajStats(): void {
   }
   fajStatsEl.hidden = false;
 
-  const steepestName = s.steepest?.name ?? "névtelen fal";
+  // The headline names the steepest *rankable* climb (≥ MIN_RANK_LENGTH_M), not the
+  // distribution max — a short stair could win on mean grade but isn't a real peak.
+  const podium = topSteep(g);
+  const steepest = podium[0]?.edge ?? s.steepest;
+  const steepestName = steepest?.name ?? "névtelen fal";
   const head =
-    `<button type="button" class="faj-steepest" data-id="${s.steepest?.id ?? ""}" ` +
+    `<button type="button" class="faj-steepest" data-id="${steepest?.id ?? ""}" ` +
     `title="Mutasd a térképen">🩸 Legmeredekebb: <strong>${escapeHtml(steepestName)}</strong> ` +
-    `· ${Math.round(s.maxGrade)}%</button>`;
+    `· ${Math.round(steepest?.elevation.grade ?? s.maxGrade)}%</button>`;
 
   const tile = (n: string, label: string) =>
     `<div class="faj-tile"><span class="faj-tile-n">${n}</span><span class="faj-tile-l">${label}</span></div>`;

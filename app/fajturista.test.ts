@@ -15,7 +15,12 @@ import {
 } from "./fajturista.ts";
 
 /** An edge carrying just the fields the lens reads, with a chosen mean grade. */
-function gradeEdge(id: number, grade: number, extra: Partial<ElevationMetrics> = {}): Edge {
+function gradeEdge(
+  id: number,
+  grade: number,
+  extra: Partial<ElevationMetrics> = {},
+  lengthM = 500, // long enough to be rankable by default (≥ MIN_RANK_LENGTH_M)
+): Edge {
   const elevation: ElevationMetrics = {
     gainM: grade, // 1:1 stand-in so Σ gain is predictable in tests
     lossM: 0,
@@ -30,7 +35,7 @@ function gradeEdge(id: number, grade: number, extra: Partial<ElevationMetrics> =
     id,
     from: 0,
     to: 1,
-    lengthM: 100,
+    lengthM,
     coordinates: [
       [0, 0],
       [0, 1],
@@ -150,6 +155,16 @@ describe("topSteep / crownBadge", () => {
 
   it("formats a crown badge", () => {
     expect(crownBadge(3, 24.4)).toBe("👑 #3 · 24%");
+  });
+
+  it("ranks out short segments so a stubby stair can't dominate", () => {
+    const edges = graded([
+      gradeEdge(0, 40, {}, 80), // a brutal 80 m stair — steepest, but too short
+      gradeEdge(1, 18, {}, 600), // a real sustained climb
+      gradeEdge(2, 12, {}, 500),
+    ]);
+    const top = topSteep(edges);
+    expect(top.map((r) => r.edge.id)).toEqual([1, 2]); // the stair is excluded
   });
 });
 

@@ -176,9 +176,25 @@ export interface SteepRank {
   rank: number;
 }
 
-/** The `n` steepest segments by mean grade, steepest first (Benedek's podium). */
-export function topSteep(edges: GradedEdge[], n = 5): SteepRank[] {
+/**
+ * Minimum segment length to earn a place on the podium. A short flight of steps or
+ * a micro-connector can hit a huge mean grade over a few metres and crowd out the
+ * real climbs; the faj-turista's crowns are for *sustained* efforts, so anything
+ * shorter than this is ranked out (it still shows its aura, just no crown).
+ */
+export const MIN_RANK_LENGTH_M = 400;
+
+/**
+ * The `n` steepest segments by mean grade, steepest first (Benedek's podium) — only
+ * those at least `minLengthM` long, so a stubby stair doesn't dominate the ranking.
+ */
+export function topSteep(
+  edges: GradedEdge[],
+  n = 5,
+  minLengthM = MIN_RANK_LENGTH_M,
+): SteepRank[] {
   return [...edges]
+    .filter((e) => e.lengthM >= minLengthM)
     .sort((a, b) => b.elevation.grade - a.elevation.grade)
     .slice(0, n)
     .map((edge, i) => ({ edge, rank: i + 1 }));
