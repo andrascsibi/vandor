@@ -35,7 +35,9 @@ Data pipeline (rerun occasionally, output is committed):
 
 ```
 npm run ingest   # Overpass → raw/trails.geojson
-npm run graph    # raw → data/segments.json (the segment DB)
+npm run pois     # Overpass → raw/pois.geojson (named POIs, parking, hospitality)
+npm run dem      # SRTM .hgt tiles → raw/dem/ (gitignored; for the 🩸 elevation lens)
+npm run graph    # raw → data/segments.json (the segment DB; bakes elevation if dem present)
 ```
 
 _Status: T3 done — the picker app ships. Press **🎲 Vándor dob** for a random

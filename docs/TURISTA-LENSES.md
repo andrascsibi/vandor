@@ -28,7 +28,7 @@ re-ranking lencse (meredekség), plusz a mai default.
 |---|---|---|---|
 | **turista** (default) | 🧭 | — | A mai app. Az út a cél, novelty-roll (`pickNovelSegment`). |
 | **kultúrista** | 🍷 | POI-overlay | Vendéglátás a szakasz / access körül — amire egy rendes turista a hátizsákjában költ. |
-| **faj-turista** | 🩸 | re-ranking | Meredekség szerinti rangsor + a top-5 korona-badge („👑 #3 · 24%"). |
+| **faj-turista** | 🩸 | re-ranking + aura | Minden szakasz **meredekség-aurája** (delta_h, a jelzésszín helyett egy szekvenciális ramp — lapos = halvány, meredek = vérvörös 🩸), a top-5 korona-badge („👑 #3 · 24%"), és egy stat-kártya (leggorombább szakasz, lejtés-hisztogram = egyben a ramp jelmagyarázata). |
 | **kóca-turista** | 🐷 | POI-overlay (gag) | Felszerelés-boltok (`shop=outdoor/sports`). Vicc, de olcsó vicc. |
 
 ## Az iránytű — a négy aspektus egysége (UI, T12b)
@@ -67,7 +67,9 @@ A négy idézet fölött a keret: *„Az emberiség két részre oszlik: aki tur
 
 A dob stratégiái: 🧭 novelty (az északi csillag); 🍷 novelty az étel/ital-közeli ösvény-
 poolban (`segmentsNearHospitality`); 🐷 **anti-Vándor** — már bejárt szakaszt dob
-(`pickWalkedSegment`, a „járatlanért" inverze); 🩸 legmeredekebb → novelty-fallback a DEM-ig.
+(`pickWalkedSegment`, a „járatlanért" inverze); 🩸 a **meredek kvantilis** (`steepPool`, felső
+25% átlag-lejtés) `pickNovelSegment`-tel súlyozva — kemény kaptató, de a járatlanért felé húzva;
+üres pool (nincs DEM) → novelty-fallback.
 A piknik a **turistáé, nem a kultúristáé** (a turistának minden a hátizsákjában van): 🧭 rajzol
 🧺 pikniket, 🍷 rajzol 🍴🍷 étel/italt.
 
@@ -86,10 +88,14 @@ szolgál — ez teszi ezt a legjobb első sávvá.
   nyersen sok; **kódban klippeljük** a marked-net közelébe (< ~600 m bármely
   szakasz-koordinátától vagy access-ponttól), így a *csatolt* halmaz kicsi és
   hegyvidéki. A vendéglátás **kontextus-POI, nem gráf-csúcs** (nem endpoint).
-- **Magasság (🩸):** NE API (rate-limit, flaky). **SRTM 1-arcsec `.hgt`** csempe
-  a bboxra (2–4 tile) — nyers int16, **nulla függőség**, offline, determinisztikus,
-  illik a „commit the data" etoszhoz. Lokális mintavétel a polyline mentén →
-  per-szakasz `gainM/lossM/maxGradePct` (meredekség ~100 m csúszó ablakon). Ez az
+- **Magasság (🩸): kész** (T12d, 2026-10-29). NE API (rate-limit, flaky) — **SRTM
+  1-arcsec `.hgt`** csempe a bboxra (2 tile: N47E018/9), az **AWS `elevation-tiles-prod`
+  skadi** mirrorról (`.hgt.gz`, auth nélkül), Node `zlib`-bel kitömörítve → nyers
+  int16, **nulla függőség**, offline, determinisztikus, illik a „commit the data"
+  etoszhoz (a nyers tile gitignore-olt, csak a derivált metrika kerül be). Lokális
+  bilineáris mintavétel a polyline mentén ~30 m-enként → per-szakasz
+  `gainM/lossM/netM` + átlag- és csúcs-lejtés (`grade`/`maxGrade`, ~90 m ablak),
+  `edge.elevation`-be sütve (`ingest/dem.ts` + `graph/attach-elevation.ts`). Ez az
   ingest a rég halogatott szintprofilt (T7 later), a nehézségi jelzést és később
   az awesomeness-score bemenetét is megnyitja — high-leverage.
 - **Boltok (🐷):** `shop=outdoor/sports`, a kultúrista-overlay újrahasznosítása.
@@ -107,8 +113,9 @@ egybeesik a kultúristával.
 1. ~~Lencseváltó substrate (előfeltétel, kicsi).~~ **kész** (T12a, 2026-10-25).
 2. ~~**🍷 kultúrista + vendéglátás-ingest**~~ **kész** (T12b, 2026-10-26) — `data/hospitality.json`
    (600 m-re klippelve a hálóhoz), futásidőben a túra köré szűrve (800 m sétatáv), pin-overlay + panel-sor.
-3. 🚌 transit switch (a `planWalk` close:false mag kész — lásd BACKLOG T8). ← **következő**
-4. 🩸 faj-turista + DEM.
+3. 🚌 transit switch (a `planWalk` close:false mag kész — lásd BACKLOG T8).
+4. ~~🩸 faj-turista + DEM.~~ **kész** (T12d, 2026-10-29) — SRTM `.hgt` DEM-ingest,
+   `edge.elevation`, meredekség-aura + stat-kártya + korona-badge + meredek-dob. ← **következő volt**
 5. 🐷 kóca (gag, ha marad kedv).
 
 Mindegyik önálló, tesztelhető ship a granularity-szabály szerint.
