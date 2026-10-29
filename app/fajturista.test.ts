@@ -10,6 +10,7 @@ import {
   graded,
   rampColor,
   rampGradientCss,
+  smoothGrades,
   steepPool,
   topSteep,
 } from "./fajturista.ts";
@@ -94,6 +95,35 @@ describe("rampColor / gradeColor", () => {
     expect(css.startsWith("linear-gradient(to right,")).toBe(true);
     expect(css).toContain("#fff2b0");
     expect(css).toContain("#8c0013");
+  });
+});
+
+describe("smoothGrades", () => {
+  // Eight points ~37 m apart along a parallel (0.0005° lon at lat 47.5).
+  const coords: [number, number][] = Array.from({ length: 8 }, (_, i) => [18.9 + i * 0.0005, 47.5]);
+
+  it("reads ~0 on a flat elevation profile", () => {
+    const g = smoothGrades(coords, coords.map(() => 200));
+    expect(g).toHaveLength(8);
+    expect(Math.max(...g)).toBeLessThan(0.5);
+  });
+
+  it("reads a positive, roughly steady grade on a steady climb", () => {
+    const climb = coords.map((_, i) => 200 + i * 5); // +5 m per ~37 m step
+    const g = smoothGrades(coords, climb);
+    expect(Math.min(...g)).toBeGreaterThan(5); // ~13% grade everywhere
+  });
+
+  it("localises steepness: a flat half then a steep half reads higher downstream", () => {
+    // First four flat, then a sharp climb — the window makes later vertices steeper.
+    const eles = [200, 200, 200, 200, 210, 220, 230, 240];
+    const g = smoothGrades(coords, eles);
+    expect(g[1]).toBeLessThan(g[6]);
+  });
+
+  it("returns all-zeros on a length mismatch or degenerate input", () => {
+    expect(smoothGrades(coords, [1, 2, 3])).toEqual(new Array(8).fill(0));
+    expect(smoothGrades([[18.9, 47.5]], [200])).toEqual([0]);
   });
 });
 

@@ -419,6 +419,15 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* The 🩸 steepness-aura canvas — a full-viewport overlay, never a click target
+   (the invisible network hit-lines above it handle add-to-túra). */
+.faj-aura-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
 /* The top-5 steepest crown badges pinned on the map. */
 .faj-crown {
   pointer-events: auto;

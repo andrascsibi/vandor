@@ -128,6 +128,24 @@ export function makeSampler(tiles: HgtTile[]): (lon: number, lat: number) => num
   };
 }
 
+/**
+ * Elevation (m, rounded) at each polyline coordinate — baked onto the edge as
+ * `eles` so the client can colour sub-segments by a local grade (the within-segment
+ * aura), not just the mean. A coordinate the sampler can't reach holds the previous
+ * value (or 0 at the very start) so the array always lines up 1:1 with `coordinates`.
+ */
+export function sampleElevations(
+  coords: [number, number][],
+  sample: (lon: number, lat: number) => number | null,
+): number[] {
+  const out: number[] = [];
+  for (const [lon, lat] of coords) {
+    const e = sample(lon, lat);
+    out.push(Math.round(e ?? (out.length ? out[out.length - 1] : 0)));
+  }
+  return out;
+}
+
 /** Per-segment elevation metrics — the faj-turista's whole read of a segment. */
 export interface ElevationMetrics {
   /** Total metres climbed along the segment (sum of positive steps). */

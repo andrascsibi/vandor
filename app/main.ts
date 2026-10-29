@@ -35,6 +35,7 @@ import {
   topSteep,
   crownBadge,
   steepPool,
+  smoothGrades,
   rampGradientCss,
   GRADE_MAX_PCT,
 } from "./fajturista.ts";
@@ -90,6 +91,16 @@ L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
 map.createPane("network");
 map.getPane("network")!.style.zIndex = "350";
 const netRenderer = L.canvas({ pane: "network", padding: 0.5, tolerance: 14 });
+
+// The 🩸 faj-turista steepness aura is painted on its own full-viewport canvas,
+// below the (now invisible) network hit-lines. A per-subsegment gradient means
+// thousands of coloured spans — far past what Leaflet's vector renderer handles
+// smoothly — so we stroke them straight onto one canvas, redrawn only on moveend.
+map.createPane("aura");
+const auraPane = map.getPane("aura")!;
+auraPane.style.zIndex = "340";
+const auraCanvas = L.DomUtil.create("canvas", "faj-aura-canvas", auraPane);
+const auraCtx = auraCanvas.getContext("2d")!;
 
 const rollBtn = document.getElementById("roll") as HTMLButtonElement;
 const infoEl = document.getElementById("info") as HTMLDivElement;
@@ -332,68 +343,107 @@ function surfaceNetworkLines(edge: Edge): L.Layer[] {
 }
 
 /**
- * The 🩸 faj-turista rendering of one base segment: the steepness aura (sign colour
- * is irrelevant to the predator — delta_h replaces it). A stack of translucent rim
- * strokes building to a crisp clickable core, all tinted by the segment's grade so
- * steep ones blaze red and flat ones recede. A segment the DEM couldn't reach has
- * no grade — drawn as a faint neutral line so it's still clickable, never coloured.
+ * The 🩸 faj-turista rendering of one base segment. The *visual* aura is painted on
+ * the canvas (`drawAura`), so here we only need the interaction: a fat, invisible
+ * hit-line to add the segment to the túra (cursor hints it's clickable). A segment
+ * the DEM couldn't reach can't be coloured on the canvas, so it gets a faint neutral
+ * visible line instead, still clickable.
  */
 function fajNetworkLines(edge: Edge): L.Layer[] {
   const latlngs = latLngsOf(edge);
-  const walked = isWalked(profile, edge.key);
-  // Walked history still dims the glow (the flashcard feel survives the lens), but
-  // the hue stays true to the land's steepness.
-  const dim = walked ? WALKED_FADE : 1;
-  if (!edge.elevation) {
-    const pl = L.polyline(latlngs, {
-      renderer: netRenderer,
-      pane: "network",
-      color: "#9aa0a6",
-      weight: 3,
-      opacity: 0.4 * dim,
-    });
-    pl.on("click", () => toggleInTour(edge.id));
-    return [pl];
-  }
-  const color = gradeColor(edge.elevation.grade);
-  const layers: L.Layer[] = [];
-  // Rim strokes: inert, widest→narrowest, building the glow.
-  for (let i = 0; i < AURA_STACK.length - 1; i++) {
-    const s = AURA_STACK[i];
-    layers.push(
-      L.polyline(latlngs, {
-        renderer: netRenderer,
-        pane: "network",
-        color,
-        weight: s.weight,
-        opacity: s.opacity * dim,
-        lineCap: "round",
-        lineJoin: "round",
-        interactive: false,
-      }),
-    );
-  }
-  // Core: the crisp centre + the hit target for add-to-túra.
-  const core = AURA_STACK[AURA_STACK.length - 1];
+  const graded = !!(edge.elevation && edge.eles);
   const pl = L.polyline(latlngs, {
     renderer: netRenderer,
     pane: "network",
-    color,
-    weight: core.weight,
-    opacity: core.opacity * dim,
+    color: graded ? "#000" : "#9aa0a6",
+    weight: graded ? 12 : 3,
+    opacity: graded ? 0 : 0.4 * (isWalked(profile, edge.key) ? WALKED_FADE : 1),
     lineCap: "round",
   });
   pl.on("click", () => toggleInTour(edge.id));
   pl.on("mouseover", () => {
-    pl.setStyle({ weight: 6, opacity: 1 });
     map.getContainer().style.cursor = "pointer";
   });
   pl.on("mouseout", () => {
-    pl.setStyle({ weight: core.weight, opacity: core.opacity * dim });
     map.getContainer().style.cursor = "";
   });
-  layers.push(pl);
-  return layers;
+  return [pl];
+}
+
+// Quantise the local grade before grouping spans into same-colour runs, so a smooth
+// gradient becomes a handful of stroked paths instead of one per 16 m span. 1.2% ≈
+// 15 ramp steps — indistinguishable from continuous in a thin translucent band, but
+// ~35% fewer runs (hence canvas strokes) than a finer step, which matters at the
+// full-region zoom where every segment is on screen at once.
+const AURA_GRADE_QUANT = 1.2;
+
+/**
+ * Paint one segment's steepness aura onto the canvas: for each width level in the
+ * stack (widest+faintest rim → crisp core), stroke the polyline in runs of constant
+ * (quantised) local grade colour. Points are pre-projected to container pixels.
+ */
+function drawAuraEdge(pts: L.Point[], grades: number[], dim: number): void {
+  const n = pts.length;
+  if (n < 2) return;
+  // Per-span colour key (quantised mean grade of its two endpoints) + its colour.
+  const keys = new Array<number>(n - 1);
+  const colors = new Array<string>(n - 1);
+  for (let i = 0; i < n - 1; i++) {
+    const k = Math.round((grades[i] + grades[i + 1]) / 2 / AURA_GRADE_QUANT);
+    keys[i] = k;
+    colors[i] = gradeColor(k * AURA_GRADE_QUANT);
+  }
+  for (const level of AURA_STACK) {
+    auraCtx.lineWidth = level.weight;
+    auraCtx.globalAlpha = level.opacity * dim;
+    let i = 0;
+    while (i < n - 1) {
+      let j = i;
+      while (j + 1 < n - 1 && keys[j + 1] === keys[i]) j++;
+      auraCtx.strokeStyle = colors[i];
+      auraCtx.beginPath();
+      auraCtx.moveTo(pts[i].x, pts[i].y);
+      for (let k = i + 1; k <= j + 1; k++) auraCtx.lineTo(pts[k].x, pts[k].y);
+      auraCtx.stroke();
+      i = j + 1;
+    }
+  }
+  auraCtx.globalAlpha = 1;
+}
+
+/**
+ * Redraw the whole steepness-aura canvas. Sizes + repositions the canvas to the
+ * current viewport (retina-aware), clears it, and — under the 🩸 lens — strokes the
+ * per-subsegment aura for every graded segment in view. Cheap enough to run on every
+ * moveend because it's raw canvas strokes, not thousands of Leaflet layers.
+ */
+function drawAura(): void {
+  const size = map.getSize();
+  const dpr = window.devicePixelRatio || 1;
+  L.DomUtil.setPosition(auraCanvas, map.containerPointToLayerPoint([0, 0]));
+  auraCanvas.width = size.x * dpr;
+  auraCanvas.height = size.y * dpr;
+  auraCanvas.style.width = `${size.x}px`;
+  auraCanvas.style.height = `${size.y}px`;
+  auraCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  auraCtx.clearRect(0, 0, size.x, size.y);
+  if (lens !== "fajturista" || !graphRef) return;
+
+  auraCtx.lineCap = "round";
+  auraCtx.lineJoin = "round";
+  const b = map.getBounds();
+  const bounds: GeoBounds = {
+    west: b.getWest(),
+    south: b.getSouth(),
+    east: b.getEast(),
+    north: b.getNorth(),
+  };
+  for (const edge of segmentsInBounds(graphRef.edges, bounds)) {
+    if (!edge.elevation || !edge.eles) continue;
+    const pts = edge.coordinates.map(([lon, lat]) => map.latLngToContainerPoint([lat, lon]));
+    const grades = smoothGrades(edge.coordinates, edge.eles);
+    drawAuraEdge(pts, grades, isWalked(profile, edge.key) ? WALKED_FADE : 1);
+  }
 }
 
 /** Midpoint [lon,lat] of a segment's polyline (the vertex nearest the middle). */
@@ -443,23 +493,10 @@ function drawTour(): void {
     if (!edge) continue;
     const latlngs = latLngsOf(edge);
     if (lens === "fajturista" && edge.elevation) {
-      // Under the 🩸 lens the aura owns the selected segment too: the steepness glow
-      // underneath, a white casing to mark it as chosen, and a grade-coloured core —
-      // so a túra segment reads by its delta_h, never its waymark colour.
+      // Under the 🩸 lens the selected segment reads by delta_h, never its waymark
+      // colour: the per-subsegment glow comes from the aura canvas underneath, and
+      // a white casing marks it chosen with a grade-mean core on top.
       const color = gradeColor(edge.elevation.grade);
-      for (let i = 0; i < AURA_STACK.length - 1; i++) {
-        const sstk = AURA_STACK[i];
-        layers.push(
-          L.polyline(latlngs, {
-            color,
-            weight: sstk.weight,
-            opacity: sstk.opacity,
-            lineCap: "round",
-            lineJoin: "round",
-            interactive: false,
-          }),
-        );
-      }
       layers.push(L.polyline(latlngs, { color: "#fff", weight: 9, opacity: 0.95, interactive: false }));
       layers.push(L.polyline(latlngs, { color, weight: 5, opacity: 1, lineCap: "round", interactive: false }));
     } else {
@@ -967,6 +1004,7 @@ function rebuild(): void {
   hospitalityNearTour = overlayPois.length ? hospitalityNear(overlayPois, tourAnchors(cands)) : [];
   drawTour();
   drawNetwork();
+  drawAura();
   drawAccess(cands);
   drawHospitality();
   drawFajCrowns();
@@ -1163,6 +1201,7 @@ async function init(): Promise<void> {
 
   rollBtn.addEventListener("click", roll);
   map.on("moveend", drawNetwork); // keep the base network in sync on pan/zoom
+  map.on("moveend viewreset resize", drawAura); // repaint the 🩸 aura canvas to match
   // A pasted/edited link navigates the túra; our own writes use replaceState.
   window.addEventListener("hashchange", () => {
     lens = parseLens(location.hash); // adopt a pasted link's lens too

@@ -5,7 +5,7 @@
 // No DOM, no Leaflet — the colour ramp, the histogram, the stats and the steep
 // roll-pool live here so they're unit-testable; main.ts paints the aura.
 
-import type { Edge } from "../graph/graph.ts";
+import { haversine, type Edge } from "../graph/graph.ts";
 import type { ElevationMetrics } from "../ingest/dem.ts";
 
 /** An edge that carries elevation — the only kind this lens can read. */
@@ -71,6 +71,45 @@ export function rampGradientCss(stops = 12): string {
     parts.push(`${rampColor(t)} ${(t * 100).toFixed(0)}%`);
   }
   return `linear-gradient(to right, ${parts.join(", ")})`;
+}
+
+// --- Per-subsegment grade (the within-segment aura) --------------------------
+//
+// The per-segment mean washes out a flat approach + a steep wall on one contracted
+// segment. The polyline vertices are already ~16 m apart (finer than SRTM's 30 m),
+// so we colour each span by a *local* grade — but computed over a ~90 m window, not
+// per 16 m span: a 16 m delta on 30 m data is pure noise, a ~90 m window is the real
+// terrain signal. Needs the per-coordinate elevations baked on the edge as `eles`.
+
+/** Window (m) the local grade is measured over — ~3 SRTM pixels, smooths the noise. */
+export const SMOOTH_WINDOW_M = 90;
+
+/**
+ * Smoothed |grade| in percent at each polyline vertex: a central difference of
+ * elevation over a ~`windowM` window (clamped at the ends). `coords` and `eles`
+ * must be the same length; returns one grade per vertex. A degenerate input (too
+ * few points or a length mismatch) yields all-zeros, so the caller can still paint.
+ */
+export function smoothGrades(
+  coords: [number, number][],
+  eles: number[],
+  windowM = SMOOTH_WINDOW_M,
+): number[] {
+  const n = coords.length;
+  if (n < 2 || eles.length !== n) return new Array(Math.max(0, n)).fill(0);
+  const cum = new Array(n).fill(0);
+  for (let i = 1; i < n; i++) cum[i] = cum[i - 1] + haversine(coords[i - 1], coords[i]);
+  const half = windowM / 2;
+  const grades = new Array<number>(n);
+  for (let i = 0; i < n; i++) {
+    let a = i;
+    while (a > 0 && cum[i] - cum[a] < half) a--;
+    let b = i;
+    while (b < n - 1 && cum[b] - cum[i] < half) b++;
+    const d = cum[b] - cum[a];
+    grades[i] = d > 0 ? (Math.abs(eles[b] - eles[a]) / d) * 100 : 0;
+  }
+  return grades;
 }
 
 // --- Stats -------------------------------------------------------------------

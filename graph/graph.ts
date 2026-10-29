@@ -77,6 +77,12 @@ export interface Edge {
    */
   elevation?: ElevationMetrics;
   /**
+   * Elevation (m) at each `coordinates` point, same length and order — lets the
+   * client colour sub-segments by a local (windowed) grade for the 🩸 aura, rather
+   * than one mean per segment. Baked alongside `elevation` (T12d); absent without DEM.
+   */
+  eles?: number[];
+  /**
    * Stable, build-order-independent content key (see `edgeStableKey`). Unlike
    * `id` — a compact index reassigned on every rebuild — this survives re-ingest
    * as long as the underlying OSM ways + endpoints are unchanged, so the personal

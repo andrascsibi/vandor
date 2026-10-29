@@ -4,7 +4,7 @@
 // reads the land through these — it never changes the túra. IO (reading the `.hgt`
 // tiles off disk) lives in build-segments.ts; this stays pure and unit-testable.
 
-import { profileSegment, type ElevationMetrics } from "../ingest/dem.ts";
+import { profileSegment, sampleElevations, type ElevationMetrics } from "../ingest/dem.ts";
 import type { Edge, SegmentGraph } from "./graph.ts";
 
 /**
@@ -19,7 +19,10 @@ export function attachElevation(
 ): SegmentGraph {
   const edges: Edge[] = graph.edges.map((e) => {
     const m = profileSegment(e.coordinates, e.lengthM, sample);
-    return m ? { ...e, elevation: m } : { ...e };
+    if (!m) return { ...e };
+    // Bake both the per-segment metrics and the per-coordinate elevations (the
+    // latter feeds the client's within-segment aura).
+    return { ...e, elevation: m, eles: sampleElevations(e.coordinates, sample) };
   });
   return { vertices: graph.vertices, edges };
 }
