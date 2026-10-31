@@ -1235,7 +1235,11 @@ async function init(): Promise<void> {
   map.on("moveend viewreset resize", drawAura); // repaint the 🩸 aura canvas to match
   // Track the zoom animation so the aura scales with the tiles, then redraws crisp on
   // moveend — otherwise the old-size overlay lingers ~250 ms behind the shrinking map.
+  // `zoomanim` covers desktop scroll/button zoom; pinch-zoom on touch drives the scale
+  // through the `zoom` event instead (as Leaflet's own canvas/tile renderers do), so we
+  // re-apply the transform there too — a cheap transform each frame, no redraw.
   map.on("zoomanim", (e) => updateAuraTransform(e.center, e.zoom));
+  map.on("zoom", () => updateAuraTransform(map.getCenter(), map.getZoom()));
   // A pasted/edited link navigates the túra; our own writes use replaceState.
   window.addEventListener("hashchange", () => {
     lens = parseLens(location.hash); // adopt a pasted link's lens too
