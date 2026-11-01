@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { surfaceClass, trailFraction } from "./surface.ts";
+import { surfaceClass, trailFraction, rollableSeeds } from "./surface.ts";
+import { MIN_RANK_LENGTH_M } from "./fajturista.ts";
 import type { SegmentGraph } from "../graph/graph.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -52,6 +53,31 @@ describe("trailFraction", () => {
 
   it("returns 0 for an empty walk", () => {
     expect(trailFraction([])).toBe(0);
+  });
+});
+
+describe("rollableSeeds", () => {
+  it("keeps only natural trails at least MIN_RANK_LENGTH_M long", () => {
+    const edges = [
+      { highway: "path", lengthM: 600 }, // trail, long → kept
+      { highway: "track", lengthM: 420 }, // trail, long → kept
+      { highway: "path", lengthM: 30 }, // trail but micro → dropped (FN2)
+      { highway: "footway", lengthM: MIN_RANK_LENGTH_M }, // exactly the floor → kept
+      { highway: "residential", lengthM: 900 }, // paved → dropped (T10a)
+      { highway: "secondary", lengthM: 900 }, // road → dropped (T10a)
+      { highway: undefined, lengthM: 900 }, // unknown → paved → dropped
+    ];
+    const seeds = rollableSeeds(edges);
+    expect(seeds.map((e) => e.lengthM).sort((a, b) => a - b)).toEqual([400, 420, 600]);
+  });
+
+  it("never offers a sub-400 m or non-trail seed over the real graph", () => {
+    const seeds = rollableSeeds(g.edges);
+    expect(seeds.length).toBeGreaterThan(0);
+    for (const e of seeds) {
+      expect(surfaceClass(e.highway)).toBe("trail");
+      expect(e.lengthM).toBeGreaterThanOrEqual(MIN_RANK_LENGTH_M);
+    }
   });
 });
 

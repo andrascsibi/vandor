@@ -3,6 +3,8 @@
 // *on*, as opposed to what you walk *through* (landcover, a later task). Pure and
 // unit-tested; needs no new data — `highway` is already on every edge.
 
+import { MIN_RANK_LENGTH_M } from "./fajturista.ts";
+
 /** The three underfoot tiers, best → worst to walk. */
 export type SurfaceClass = "trail" | "paved" | "road";
 
@@ -25,6 +27,25 @@ export function surfaceClass(highway?: string): SurfaceClass {
     if (PAVED.has(highway)) return "paved";
   }
   return "paved";
+}
+
+/**
+ * The pool the dice may seed a túra from: natural `trail` segments at least
+ * `minLengthM` long. The surface filter keeps the roll off settlement streets and
+ * motor roads (T10a); the length floor (FN2) keeps it off micro-connectors — the
+ * sub-50 m crossing stubs we now keep in the graph for routing accuracy, and any
+ * other stubby fragment — so "Vándor dob" always lands on a segment worth walking.
+ * Reuses the faj-turista's `MIN_RANK_LENGTH_M` (a short segment can't earn a crown,
+ * and shouldn't be offered as a whole túra either). Pure; the per-lens strategies in
+ * main.ts narrow this pool further, but never below this floor.
+ */
+export function rollableSeeds<T extends { highway?: string; lengthM: number }>(
+  edges: T[],
+  minLengthM: number = MIN_RANK_LENGTH_M,
+): T[] {
+  return edges.filter(
+    (e) => surfaceClass(e.highway) === "trail" && e.lengthM >= minLengthM,
+  );
 }
 
 /**

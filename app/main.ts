@@ -50,7 +50,7 @@ import {
   type AccessCandidate,
 } from "./tour.ts";
 import { planWalk, type TourWalk } from "./walk.ts";
-import { surfaceClass, trailFraction, type SurfaceClass } from "./surface.ts";
+import { surfaceClass, trailFraction, rollableSeeds, type SurfaceClass } from "./surface.ts";
 import {
   DEFAULT_LENS,
   LENSES,
@@ -1165,9 +1165,11 @@ async function init(): Promise<void> {
   reflectLens();
 
   // The dob starts a fresh túra from a seed segment — only ever a natural trail
-  // (T10a), never a settlement street or motor road. Each lens then rolls with its
+  // (T10a), never a settlement street or motor road, and never a sub-400 m micro-
+  // segment (FN2): the short crossing stubs now live in the graph for routing
+  // accuracy but must never be *offered* as a túra. Each lens then rolls with its
   // own strategy (T12b): the land it reads shapes what "véletlen" means.
-  trailSeeds = graph.edges.filter((e) => surfaceClass(e.highway) === "trail");
+  trailSeeds = rollableSeeds(graph.edges);
   // The kultúrista dob rolls from trail seeds with food/drink on or close to them —
   // walked or not, the only thing that matters to him is the hospitality nearby.
   kulturistaSeeds = segmentsNearHospitality(trailSeeds, foodDrinkPois);
