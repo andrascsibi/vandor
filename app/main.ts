@@ -61,6 +61,7 @@ import {
   rollLabel,
   type Lens,
 } from "./lens.ts";
+import { compassHeading, gpsHeading, arrowHeading } from "./geolocate.ts";
 import {
   buildRouteGraph,
   deadEndVertices,
@@ -126,6 +127,7 @@ const panelEl = document.getElementById("panel") as HTMLElement;
 const panelHandle = document.getElementById("panel-handle") as HTMLButtonElement;
 const panelHandleSummaryEl = document.getElementById("panel-handle-summary") as HTMLSpanElement;
 const panelActionsEl = document.getElementById("panel-actions") as HTMLDivElement;
+const locateBtn = document.getElementById("locate") as HTMLButtonElement;
 
 const isMobile = () => window.innerWidth <= 640;
 
@@ -1129,6 +1131,161 @@ infoEl.addEventListener("mouseover", (ev) => {
 infoEl.addEventListener("mouseout", (ev) => {
   const row = (ev.target as HTMLElement).closest(".seg-row") as HTMLElement | null;
   if (row && !row.contains(ev.relatedTarget as Node)) emphasize(null);
+});
+
+// ─── FN1 · "Hol vagyok?" location dot (opt-in) ──────────────────────────────────
+// The only reason to leave Vándor for Mapy mid-hike was to see one's own position.
+// We never touch geolocation on load; the bottom-right button requests it on tap
+// (which also serves as the iOS gesture for device-orientation permission), then a
+// blue dot + heading arrow tracks the user. Tap again to switch off; degrades quietly
+// when denied or unsupported. See docs/FIELD-NOTES-BUDAKESZI.md.
+let locateLayer: L.LayerGroup | null = null;
+let geoWatchId: number | null = null;
+let userPos: { lat: number; lon: number; accuracyM: number } | null = null;
+let compassHead: number | null = null; // device facing (deviceorientation)
+let gpsHead: number | null = null; // direction of travel (geolocation)
+let locating = false;
+let centredOnUser = false; // pan to the user once, on the first fix
+let locRedrawPending = false;
+
+type LocateState = "off" | "active" | "denied" | "error" | "unsupported";
+const LOCATE_TITLE: Record<LocateState, string> = {
+  off: "Hol vagyok?",
+  active: "Követlek — koppints a kikapcsoláshoz",
+  denied: "Helymeghatározás letiltva",
+  error: "Nem sikerült a helymeghatározás",
+  unsupported: "A böngésző nem támogatja a helymeghatározást",
+};
+function setLocateState(state: LocateState): void {
+  locateBtn.classList.toggle("active", state === "active");
+  locateBtn.classList.toggle("denied", state === "denied" || state === "error" || state === "unsupported");
+  locateBtn.setAttribute("aria-pressed", String(state === "active"));
+  locateBtn.title = LOCATE_TITLE[state];
+}
+
+// Draw (or clear) the dot + its heading arrow at the latest fix. The marker is
+// lat/lng-anchored, so Leaflet keeps it in place on pan/zoom — no moveend redraw.
+function drawLocation(): void {
+  locateLayer?.remove();
+  locateLayer = null;
+  if (!locating || !userPos) return;
+  const latlng = toLatLng([userPos.lon, userPos.lat]);
+  const heading = arrowHeading({ compass: compassHead, gps: gpsHead });
+  const arrow = heading === null ? "" : `<div class="locdot-arrow" style="transform:rotate(${heading}deg)"></div>`;
+  const layers: L.Layer[] = [];
+  // A faint accuracy halo only when the fix is coarse, so a tight GPS lock stays clean.
+  if (userPos.accuracyM > 25) {
+    layers.push(
+      L.circle(latlng, {
+        radius: userPos.accuracyM,
+        color: "#1c66c9",
+        weight: 1,
+        opacity: 0.4,
+        fillColor: "#1c66c9",
+        fillOpacity: 0.08,
+        interactive: false,
+      }),
+    );
+  }
+  layers.push(
+    L.marker(latlng, {
+      icon: L.divIcon({
+        className: "locdot-wrap",
+        html: `<div class="locdot">${arrow}<div class="locdot-core"></div></div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+      }),
+      interactive: false,
+      keyboard: false,
+    }),
+  );
+  locateLayer = L.layerGroup(layers).addTo(map);
+}
+
+// Orientation fires many times a second; coalesce redraws to one per frame.
+function scheduleLocationRedraw(): void {
+  if (locRedrawPending) return;
+  locRedrawPending = true;
+  requestAnimationFrame(() => {
+    locRedrawPending = false;
+    drawLocation();
+  });
+}
+
+function onOrientation(e: DeviceOrientationEvent): void {
+  const h = compassHeading(e as DeviceOrientationEvent & { webkitCompassHeading?: number });
+  if (h === null) return;
+  compassHead = h;
+  scheduleLocationRedraw();
+}
+
+function onPosition(pos: GeolocationPosition): void {
+  const c = pos.coords;
+  userPos = { lat: c.latitude, lon: c.longitude, accuracyM: c.accuracy };
+  gpsHead = gpsHeading(c);
+  if (!centredOnUser) {
+    centredOnUser = true;
+    map.setView([c.latitude, c.longitude], Math.max(map.getZoom(), 15));
+  }
+  scheduleLocationRedraw();
+}
+
+function onPositionError(err: GeolocationPositionError): void {
+  stopLocating(err.code === err.PERMISSION_DENIED ? "denied" : "error");
+}
+
+// iOS 13+ gates device orientation behind a permission call that must come from a user
+// gesture — the button tap is it. Elsewhere the API is unguarded; GPS heading is the
+// fallback when orientation yields no absolute bearing, so failures here are non-fatal.
+async function requestOrientation(): Promise<void> {
+  const DOE = window.DeviceOrientationEvent as unknown as {
+    requestPermission?: () => Promise<"granted" | "denied">;
+  };
+  try {
+    if (typeof DOE?.requestPermission === "function") {
+      if ((await DOE.requestPermission()) !== "granted") return;
+    }
+  } catch {
+    /* some browsers throw outside a gesture — ignore; the dot still tracks via GPS */
+  }
+  window.addEventListener("deviceorientationabsolute", onOrientation as EventListener);
+  window.addEventListener("deviceorientation", onOrientation as EventListener);
+}
+
+function startLocating(): void {
+  if (!("geolocation" in navigator)) {
+    setLocateState("unsupported");
+    return;
+  }
+  locating = true;
+  centredOnUser = false;
+  setLocateState("active");
+  void requestOrientation();
+  geoWatchId = navigator.geolocation.watchPosition(onPosition, onPositionError, {
+    enableHighAccuracy: true,
+    maximumAge: 5000,
+    timeout: 20000,
+  });
+}
+
+function stopLocating(reason: LocateState = "off"): void {
+  locating = false;
+  if (geoWatchId !== null) {
+    navigator.geolocation.clearWatch(geoWatchId);
+    geoWatchId = null;
+  }
+  window.removeEventListener("deviceorientationabsolute", onOrientation as EventListener);
+  window.removeEventListener("deviceorientation", onOrientation as EventListener);
+  compassHead = null;
+  gpsHead = null;
+  userPos = null;
+  drawLocation(); // clears the layer
+  setLocateState(reason);
+}
+
+locateBtn.addEventListener("click", () => {
+  if (locating) stopLocating("off");
+  else startLocating();
 });
 
 async function init(): Promise<void> {

@@ -799,6 +799,73 @@ body {
   color: #8a4b2f;
 }
 
+/* FN1 · "Hol vagyok?" — the opt-in location button, a paper disc bottom-right (clear
+   of the top-left zoom control, the top-right hub and the bottom-left dev panel). */
+.locate {
+  position: fixed;
+  z-index: 1000;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--paper);
+  box-shadow: 0 3px 12px rgba(40, 30, 15, 0.3);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Active: a blue ring (the "you" accent), the pin emoji still readable on paper. */
+.locate.active {
+  box-shadow: 0 0 0 2.5px #1c66c9, 0 3px 12px rgba(40, 30, 15, 0.3);
+}
+/* Denied / unsupported: faded, so it reads as unavailable but stays put. */
+.locate.denied {
+  opacity: 0.45;
+}
+
+/* The location dot (FN1): a blue core, with a heading arrow that rotates around it to
+   show which way the phone is facing (compass) or travelling (GPS). The arrow is a
+   full-icon container rotated about its centre, so the triangle orbits the dot. */
+.locdot {
+  position: relative;
+  width: 28px;
+  height: 28px;
+}
+.locdot-core {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #1c66c9;
+  box-shadow: 0 0 0 2px #fff, 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+.locdot-arrow {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+}
+.locdot-arrow::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -1px;
+  transform: translateX(-50%);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 8px solid #1c66c9;
+  filter: drop-shadow(0 0 1px #fff);
+}
+
 /* Leaflet attribution sits better with a touch of transparency. */
 .leaflet-container {
   font-family: inherit;

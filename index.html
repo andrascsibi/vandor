@@ -75,6 +75,12 @@
       </div>
     </aside>
 
+    <!-- FN1 · "Hol vagyok?" — one unobtrusive opt-in button, bottom-right. We request
+         neither geolocation nor device-orientation on load; the first tap asks for both
+         (the tap is also the gesture iOS needs for compass access), then a blue dot with
+         a heading arrow tracks you. Tap again to switch it off. -->
+    <button id="locate" class="locate" type="button" aria-pressed="false" aria-label="Hol vagyok?" title="Hol vagyok?">📍</button>
+
     <!-- Dev-only panel (enabled with #dev=1 in the URL), bottom-left. Currently holds
          the 🩸 faj-turista delta_h stats + grade histogram while they prove out, so
          the compass petals stay minimal. Populated + shown/hidden by renderDevPanel. -->
