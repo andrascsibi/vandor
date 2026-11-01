@@ -303,7 +303,7 @@ fruits that surfaced on a real túra — small, each shippable alone.
   permission prompt until the button is pressed; degrade quietly if denied/unsupported.
   Keep it one unobtrusive button, per the minimalism the field note flags.
 
-- [ ] **FN2 · Keep sub-50m segments; filter the *roll*, not the *graph*.** The
+- [x] **FN2 · Keep sub-50m segments; filter the *roll*, not the *graph*.** The
   50 m merge rule (`MERGE_THRESHOLD_M`, [graph/graph.ts](../graph/graph.ts)) drops
   short connector segments, so the planner thinks you can't cross where you can —
   an old design decision biting back (false dead-ends, inaccurate connectivity).
@@ -319,6 +319,20 @@ fruits that surfaced on a real túra — small, each shippable alone.
   (routing finds the path); `pickNovelSegment`/`rollSeed` never returns a sub-400 m
   seed. **Order:** the roll filter is trivial and independently valuable — ship it
   first; the graph-retention half is the real planner-accuracy fix.
+  - **Done (2026-11-01, 223 tests).** Roll half: pure `rollableSeeds`
+    ([app/surface.ts](../app/surface.ts)) = natural trails ≥ `MIN_RANK_LENGTH_M`;
+    `init`'s `trailSeeds` now uses it, so no lens ever *offers* a micro-segment.
+    Graph half: the 50m merge pass is **removed** from `buildSegmentGraph`
+    ([graph/graph.ts](../graph/graph.ts)) — `MERGE_THRESHOLD_M` + the
+    `mergeThresholdM` option gone; the bridge pass (road-crossing false dead-ends)
+    stays; the POI-split fragment guard took its own `MIN_FRAGMENT_M`
+    ([graph/attach-pois.ts](../graph/attach-pois.ts)). Rebuilt data: **1050 → 1153
+    segments, 796 → 893 vertices** (94 restored sub-50m connectors), 859.4 km
+    unchanged. **Data cost measured before shipping: +14.9 KB gzipped (+2.6%) over
+    the wire** (562.5 → 577.4 KB; raw +56 KB) — negligible, since the geometry was
+    already there, only the per-edge metadata grew. Note: edges at the restored
+    micro-junctions get new stable keys, so a few old `#t=…` shared links drift to
+    "unwalked" for those segments (graceful, as designed).
 
 - [ ] **FN3 · (maybe) Access-distance slider.** Re-rolling to find a *nearby*
   pick worked via the 🅿️ distance badge + repeated throws. A slider that biases the
