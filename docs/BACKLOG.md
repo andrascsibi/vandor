@@ -259,7 +259,7 @@ ships standalone.
     `innerWidth ≤ 640` (reliable under CDP emulation, unlike `matchMedia`). CDP-verified
     desktop + mobile collapsed/expanded and that the clear pill fires end-to-end.
 
-- [ ] **T12c · 🩸 faj-turista + elevation ingest.** SRTM 1-arcsec `.hgt` tiles for
+- [x] **T12c · 🩸 faj-turista + elevation ingest.** SRTM 1-arcsec `.hgt` tiles for
   the bbox (2–4 tiles; raw int16, **zero deps**, offline, deterministic — fits the
   "commit the data" ethos; NOT an elevation API — rate-limited/flaky).
   `ingest/elevation.ts` (pure: tile index → `sampleElevation`, `profileAlong`,
@@ -274,12 +274,58 @@ ships standalone.
   - *Roll already stubbed (T12b):* the 🩸 button renames to "Faj-turista dob" and
     `rollSeed`'s `fajturista` branch is a novelty fallback — fill it with
     `pickSteepSegment` once `Edge.grade` exists.
+  - **Done (prev session) + field-validated 2026-11-01.** DEM ingest + grade
+    attach + `app/fajturista.ts` (`steepPool`/`topSteep`/`MIN_RANK_LENGTH_M=400`)
+    + the 👑 crown overlay + steep-biased roll all shipped. On the Budakeszi
+    vadaspark túra it **worked great in the wild**: mid-hike replanning showed the
+    expected climbs (🩸) and picnic spots (🧺) in a few taps — the DEM's first
+    live outing. See [FIELD-NOTES-BUDAKESZI.md](FIELD-NOTES-BUDAKESZI.md).
 
 - [ ] **T12d · 🐷 kóca-turista (gag).** `shop ∈ {outdoor, sports}` overlay reusing
   the T12b overlay infra — different `kind`, pig icon. Cheap joke; do last / optional.
   - *Roll already shipped (T12b):* the 🐷 button renames to "Kóca-turista dob" and
     rolls `pickWalkedSegment` — the anti-Vándor re-treads walked paths (novelty
     fallback until the profile has one). Only the shop overlay remains for this task.
+
+## Field-driven quick wins (Budakeszi field note, 2026-11-01)
+
+See [FIELD-NOTES-BUDAKESZI.md](FIELD-NOTES-BUDAKESZI.md). Three low-hanging
+fruits that surfaced on a real túra — small, each shippable alone.
+
+- [ ] **FN1 · "Hol vagyok?" location dot (opt-in).** The only reason to switch to
+  Mapy mid-hike was to see one's own position. Fix without adding a permanent
+  control: **don't** request geolocation on load; a single button **bottom-right**
+  asks for it on tap, then a small dot appears at the user's position with a **little
+  heading arrow** (which way you're facing). *Product:* Vándor becomes the only map
+  you need on the trail. *Notes:* `navigator.geolocation.watchPosition` + device
+  orientation (`deviceorientation`/`deviceorientationabsolute`, iOS needs the
+  permission gesture — the button covers it); a Leaflet divIcon dot+arrow; no
+  permission prompt until the button is pressed; degrade quietly if denied/unsupported.
+  Keep it one unobtrusive button, per the minimalism the field note flags.
+
+- [ ] **FN2 · Keep sub-50m segments; filter the *roll*, not the *graph*.** The
+  50 m merge rule (`MERGE_THRESHOLD_M`, [graph/graph.ts](../graph/graph.ts)) drops
+  short connector segments, so the planner thinks you can't cross where you can —
+  an old design decision biting back (false dead-ends, inaccurate connectivity).
+  The *rejected* fix is combing short-segment endpoints together (ugly: moves
+  geometry, can confuse navigation). **Do instead:** retain short segments in the
+  graph (relax/remove the distinct-endpoint drop so connectivity is accurate) and
+  **narrow the dice-roll candidate pool to segments ≥ ~400 m** so the dice never
+  offers a micro-segment. Reuse `MIN_RANK_LENGTH_M = 400`
+  ([app/fajturista.ts](../app/fajturista.ts)) — the faj-turista already ranks on
+  it. The roll pool is `trailSeeds` ([app/main.ts](../app/main.ts) `init`), so the
+  filter is one `.filter((e) => e.lengthM >= MIN_RANK_LENGTH_M)` there; the graph
+  change is the substantive half. *Testable:* graph keeps the short crossing edge
+  (routing finds the path); `pickNovelSegment`/`rollSeed` never returns a sub-400 m
+  seed. **Order:** the roll filter is trivial and independently valuable — ship it
+  first; the graph-retention half is the real planner-accuracy fix.
+
+- [ ] **FN3 · (maybe) Access-distance slider.** Re-rolling to find a *nearby*
+  pick worked via the 🅿️ distance badge + repeated throws. A slider that biases the
+  roll toward a car-distance ceiling would automate it — but it's **probably
+  needless complication**; the minimalist look is winning and the badge already
+  does the job. Park here unless the pattern recurs. (Relates to the T9
+  kényszer-profil's access ranking — fold it in there if it ever lands.)
 
 ## Automatic planner (later)
 
