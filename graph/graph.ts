@@ -8,17 +8,24 @@
 //   2. Each maximal chain of pass-through nodes between two vertices contracts
 //      into one segment (edge), carrying the full polyline. Chains can span
 //      multiple ways joined end to end.
-//   3. 50m merge rule: endpoints of a sub-50m edge are merged into one vertex
-//      (de-noises micro-junctions, e.g. a trail crossing a road). The collapsed
-//      edge is dropped and remaining edges are re-contracted, so no degree-2
-//      vertex survives the merge.
+//   3. Bridge pass: a dead-end endpoint sitting within BRIDGE_THRESHOLD_M of
+//      another trail vertex, with no edge joining them, is a trail crossing a
+//      road (two OSM ways that meet at the road but share no node); merge the
+//      pair and re-contract so the crossing isn't a false dead-end.
+//
+// Short segments are KEPT (FN2): there is deliberately no sub-50m "merge rule"
+// collapsing micro-junctions. Dropping a short connector between two real
+// junctions used to introduce false dead-ends and inaccurate connectivity (the
+// planner thought you couldn't cross where you can); combing the endpoints
+// together instead would move geometry and confuse navigation. So the graph
+// retains them for accurate routing, and the *dice* (not the graph) filters them
+// out via `rollableSeeds` so a micro-segment is never offered as a túra.
 //
 // No filesystem, no DOM — build-segments.ts does the IO so this stays testable.
 
 import type { TrailFeatureCollection } from "../ingest/overpass.ts";
 import type { ElevationMetrics } from "../ingest/dem.ts";
 
-export const MERGE_THRESHOLD_M = 50;
 // A trail dead-end sitting within this of another trail vertex is treated as the
 // same junction split across a road crossing (OSM ways not sharing a node), and
 // merged — see the bridge pass in buildSegmentGraph.
@@ -325,9 +332,8 @@ function contractChains(edges: RawEdge[]): RawEdge[] {
 
 export function buildSegmentGraph(
   fc: TrailFeatureCollection,
-  opts: { mergeThresholdM?: number; bridgeThresholdM?: number } = {},
+  opts: { bridgeThresholdM?: number } = {},
 ): SegmentGraph {
-  const mergeThresholdM = opts.mergeThresholdM ?? MERGE_THRESHOLD_M;
   const bridgeThresholdM = opts.bridgeThresholdM ?? BRIDGE_THRESHOLD_M;
 
   // 1. One RawEdge per consecutive OSM node pair (a single polyline link).
@@ -364,60 +370,7 @@ export function buildSegmentGraph(
   // 2. Contract pass-through chains into maximal segments.
   let working = contractChains(linkEdges);
 
-  // 3. 50m merge, iterated to a fixpoint: union the endpoints of every
-  //    sub-threshold edge, remap to cluster reps (snapping the terminal coord
-  //    so the polyline stays connected), drop any edge whose distinct endpoints
-  //    collapsed, then re-contract. Snapping can shorten a neighbouring edge
-  //    below the threshold, so we repeat until a round unions nothing. Each
-  //    round removes at least one vertex, so this terminates.
-  for (;;) {
-    const parent = new Map<number, number>();
-    for (const e of working) {
-      if (!parent.has(e.from)) parent.set(e.from, e.from);
-      if (!parent.has(e.to)) parent.set(e.to, e.to);
-    }
-    const find = (x: number): number => {
-      let root = x;
-      while ((parent.get(root) ?? root) !== root) root = parent.get(root)!;
-      let cur = x;
-      while ((parent.get(cur) ?? cur) !== cur) {
-        const nxt = parent.get(cur)!;
-        parent.set(cur, root);
-        cur = nxt;
-      }
-      return root;
-    };
-    let didUnion = false;
-    const union = (x: number, y: number) => {
-      const rx = find(x);
-      const ry = find(y);
-      if (rx === ry) return;
-      if (rx < ry) parent.set(ry, rx); // smaller osm id wins → deterministic rep
-      else parent.set(rx, ry);
-      didUnion = true;
-    };
-    for (const e of working) {
-      if (e.from !== e.to && polylineLength(e.coordinates) < mergeThresholdM) {
-        union(e.from, e.to);
-      }
-    }
-    if (!didUnion) break;
-
-    const remapped: RawEdge[] = [];
-    for (const e of working) {
-      const from = find(e.from);
-      const to = find(e.to);
-      if (from === to && e.from !== e.to) continue; // distinct ends collapsed → drop
-      const coordinates = [...e.coordinates];
-      if (from !== e.from) coordinates[0] = coord.get(from)!;
-      if (to !== e.to) coordinates[coordinates.length - 1] = coord.get(to)!;
-      remapped.push({ ...e, from, to, coordinates });
-    }
-    // Re-contract: the merge can leave degree-2 vertices; collapse them too.
-    working = contractChains(remapped);
-  }
-
-  // 4. Bridge micro-gaps between trails. A dead-end endpoint (degree 1) sitting
+  // 3. Bridge micro-gaps between trails. A dead-end endpoint (degree 1) sitting
   //    within bridgeThresholdM of another trail vertex, with no edge joining
   //    them, is almost always the same junction split across a road crossing:
   //    the two OSM ways meet at the road but don't share a node, so contraction
@@ -502,7 +455,7 @@ export function buildSegmentGraph(
 
   const finalEdges = working;
 
-  // 5. Compact vertex indexing (first-seen order over the final edges).
+  // 4. Compact vertex indexing (first-seen order over the final edges).
   const index = new Map<number, number>();
   const vertices: Vertex[] = [];
   const vertexIndex = (osmId: number): number => {

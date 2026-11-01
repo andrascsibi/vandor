@@ -1,11 +1,11 @@
 // Integration check over the committed graph output (data/segments.json).
-// Guards the T2 "product": the contraction/merge invariants that the picker
+// Guards the T2 "product": the contraction invariants that the picker
 // (T3) and planner rely on.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MERGE_THRESHOLD_M, type SegmentGraph } from "./graph.ts";
+import { type SegmentGraph } from "./graph.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dataPath = resolve(__dirname, "../data/segments.json");
@@ -42,11 +42,14 @@ describe("data/segments.json", () => {
     }
   });
 
-  it("has no sub-50m edge between distinct vertices (50m merge rule held)", () => {
-    const offenders = g.edges.filter(
-      (e) => e.from !== e.to && e.lengthM < MERGE_THRESHOLD_M,
-    );
-    expect(offenders).toHaveLength(0);
+  it("keeps short connector segments for accurate connectivity (FN2)", () => {
+    // The old 50m merge dropped sub-50m connectors, inventing false dead-ends.
+    // FN2 keeps them — so the committed graph should carry a meaningful band of
+    // short edges, none of them degenerate (zero-length links are skipped at
+    // ingest). The dice filters these out of the roll (rollableSeeds), not here.
+    const short = g.edges.filter((e) => e.from !== e.to && e.lengthM < 50);
+    expect(short.length).toBeGreaterThan(20);
+    for (const e of short) expect(e.lengthM).toBeGreaterThan(1);
   });
 
   it("has no UNNAMED pure degree-2 pass-through vertex (only POI waypoints)", () => {

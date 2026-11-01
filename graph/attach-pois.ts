@@ -14,7 +14,6 @@
 // higher-priority kind (POI_KINDS order) wins. No filesystem, no DOM.
 
 import {
-  MERGE_THRESHOLD_M,
   edgeStableKey,
   endpointToken,
   haversine,
@@ -25,6 +24,13 @@ import {
 import { POI_KINDS, type PoiFeature, type PoiKind } from "../ingest/pois.ts";
 
 export const SNAP_RADIUS_M = 60;
+/**
+ * A POI split never carves off a fragment shorter than this (a too-close POI
+ * names the neighbouring vertex instead). Keeps POI-split vertices from making
+ * stubby sub-segments — unrelated to the graph builder, which now keeps genuine
+ * short edges (FN2); this is only about not *inventing* short fragments at a POI.
+ */
+export const MIN_FRAGMENT_M = 50;
 
 const EARTH_RADIUS_M = 6_371_000;
 const rad = (d: number) => (d * Math.PI) / 180;
@@ -144,7 +150,7 @@ export function attachPois(
   opts: { snapRadiusM?: number; minFragmentM?: number } = {},
 ): SegmentGraph {
   const SNAP = opts.snapRadiusM ?? SNAP_RADIUS_M;
-  const MINFRAG = opts.minFragmentM ?? MERGE_THRESHOLD_M;
+  const MINFRAG = opts.minFragmentM ?? MIN_FRAGMENT_M;
 
   const vertices: Vertex[] = graph.vertices.map((v) => ({ ...v }));
   const raws: RawEdge[] = graph.edges.map((e) => ({

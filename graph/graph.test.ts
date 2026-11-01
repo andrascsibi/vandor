@@ -99,10 +99,12 @@ describe("buildSegmentGraph — contraction", () => {
   });
 });
 
-describe("buildSegmentGraph — 50m merge rule", () => {
-  it("merges the endpoints of a sub-50m edge into one vertex and drops it", () => {
+describe("buildSegmentGraph — short-segment retention (FN2)", () => {
+  it("keeps a sub-50m connector between two real junctions (accurate connectivity)", () => {
     // Two junctions (node 2 and node 3, each degree 3 via a spur) sit ~22m
-    // apart — a micro-junction the 50m rule should collapse.
+    // apart. The old 50m merge collapsed them into one vertex and dropped the
+    // connector — a false simplification that made the planner think you couldn't
+    // cross. FN2: keep the short edge so the crossing is routable.
     const a: [number, number] = [19.0, 47.5];
     const b: [number, number] = [19.0, 47.5002]; // ~22m north of a
     expect(haversine(a, b)).toBeLessThan(50);
@@ -110,35 +112,41 @@ describe("buildSegmentGraph — 50m merge rule", () => {
       fc([
         way([1, 2], [P(-1), a]), // spur → node 2 (degree 3)
         way([2, 7], [a, P(-2)]), // spur → node 2
-        way([2, 3], [a, b]), // ~22m micro-edge between the two junctions
+        way([2, 3], [a, b]), // ~22m connector between the two junctions
         way([3, 4], [b, P(1)]), // spur → node 3 (degree 3)
         way([3, 8], [b, P(2)]), // spur → node 3
       ]),
     );
-    // 2 and 3 collapse: vertices 1, 7, merged(2), 4, 8 = 5; micro-edge dropped → 4 edges.
-    expect(g.vertices).toHaveLength(5);
-    expect(g.edges).toHaveLength(4);
-    expect(g.edges.every((e) => e.lengthM >= 50 || e.from === e.to)).toBe(true);
+    // Both junctions survive: vertices 1, 2, 3, 4, 7, 8 = 6; all 5 edges kept.
+    expect(g.vertices).toHaveLength(6);
+    expect(g.edges).toHaveLength(5);
+    // The connector is present and short — the two junctions are genuinely joined.
+    const connector = g.edges.find((e) => e.lengthM < 50);
+    expect(connector).toBeDefined();
+    const ends = new Set([connector!.from, connector!.to]);
+    for (const spur of g.edges.filter((e) => e !== connector)) {
+      expect(ends.has(spur.from) || ends.has(spur.to)).toBe(true);
+    }
   });
 
-  it("re-contracts a junction left at degree 2 after a short stub is merged away", () => {
+  it("keeps a short dead-end spur rather than collapsing its junction", () => {
     const a: [number, number] = [19.0, 47.502];
     const stub: [number, number] = [19.0, 47.5022]; // ~22m dead-end spur off node 2
     expect(haversine(a, stub)).toBeLessThan(50);
     const g = buildSegmentGraph(
       fc([
         way([1, 2, 3], [P(0), a, P(2)]), // main path through node 2
-        way([2, 9], [a, stub]), // short spur → node 2 becomes a degree-3 junction
+        way([2, 9], [a, stub]), // short spur → node 2 is a degree-3 junction
       ]),
     );
-    // Merging the stub drops node 9 and leaves node 2 at degree 2; re-contraction
-    // collapses it, so the main path is a single edge between its two ends.
-    expect(g.vertices).toHaveLength(2);
-    expect(g.edges).toHaveLength(1);
-    expect(g.edges[0].coordinates).toHaveLength(3);
+    // The spur stays: node 2 remains a junction, splitting the main path in two.
+    // Vertices 1, 2, 3, 9 = 4; edges (1-2), (2-3), (2-9) = 3.
+    expect(g.vertices).toHaveLength(4);
+    expect(g.edges).toHaveLength(3);
+    expect(g.edges.some((e) => e.lengthM < 50)).toBe(true);
   });
 
-  it("leaves no degree-2 vertex in the output", () => {
+  it("leaves no degree-2 vertex in the output (contraction invariant)", () => {
     const g = buildSegmentGraph(
       fc([
         way([1, 2, 3], [P(0), [19.0, 47.502], P(2)]),
