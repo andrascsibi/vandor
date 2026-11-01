@@ -292,7 +292,7 @@ ships standalone.
 See [FIELD-NOTES-BUDAKESZI.md](FIELD-NOTES-BUDAKESZI.md). Three low-hanging
 fruits that surfaced on a real túra — small, each shippable alone.
 
-- [ ] **FN1 · "Hol vagyok?" location dot (opt-in).** The only reason to switch to
+- [x] **FN1 · "Hol vagyok?" location dot (opt-in).** The only reason to switch to
   Mapy mid-hike was to see one's own position. Fix without adding a permanent
   control: **don't** request geolocation on load; a single button **bottom-right**
   asks for it on tap, then a small dot appears at the user's position with a **little
@@ -302,6 +302,21 @@ fruits that surfaced on a real túra — small, each shippable alone.
   permission gesture — the button covers it); a Leaflet divIcon dot+arrow; no
   permission prompt until the button is pressed; degrade quietly if denied/unsupported.
   Keep it one unobtrusive button, per the minimalism the field note flags.
+  - **Done (2026-11-01, 232 tests, +9).** One 📍 paper-disc button bottom-right
+    ([index.html](../index.html)), clear of the zoom control / compass hub / dev panel.
+    Pure bearing maths in [app/geolocate.ts](../app/geolocate.ts): `compassHeading`
+    (iOS `webkitCompassHeading`, else the complement of an *absolute* `alpha`; null
+    without a fixed north so the arrow never points at a false bearing), `gpsHeading`
+    (gated on a positive speed — `heading` is NaN while stationary), `arrowHeading`
+    (compass facing wins — "merre nézek" — GPS travel direction the fallback) +
+    `normalizeDeg`. [app/main.ts](../app/main.ts): no geolocation on load; the first
+    tap runs `requestOrientation` (the gesture iOS 13+ needs, wrapped in a try/catch
+    so a throw outside a gesture still leaves GPS heading working) + `watchPosition`
+    (highAccuracy), pans to the first fix once, then a lat/lng-anchored dot+arrow
+    divIcon (rAF-coalesced redraws, since orientation fires ~60/s) with a faint
+    accuracy halo *only* when the fix is coarse (>25 m). Tap again to switch off;
+    `denied`/`error`/`unsupported` fade the button + set a Hungarian title. Verified:
+    renders unobtrusively, app loads clean, 9 `geolocate.test.ts` specs green.
 
 - [x] **FN2 · Keep sub-50m segments; filter the *roll*, not the *graph*.** The
   50 m merge rule (`MERGE_THRESHOLD_M`, [graph/graph.ts](../graph/graph.ts)) drops
